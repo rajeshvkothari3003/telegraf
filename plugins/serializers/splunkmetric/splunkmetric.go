@@ -2,6 +2,7 @@ package splunkmetric
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 
 	"github.com/influxdata/telegraf"
@@ -39,15 +40,24 @@ func NewSerializer(splunkmetricHecRouting bool, splunkmetricMultimetric bool) (*
 }
 
 func (s *serializer) Serialize(metric telegraf.Metric) ([]byte, error) {
-	return s.createObject(metric), nil
+
+	m, err := s.createObject(metric)
+	if err != nil {
+		return nil, fmt.Errorf("D! [serializer.splunkmetric] Dropping invalid metric: %s", metric.Name())
+	}
+
+	return m, nil
 }
 
 func (s *serializer) SerializeBatch(metrics []telegraf.Metric) ([]byte, error) {
+
 	var serialized []byte
 
 	for _, metric := range metrics {
-		m := s.createObject(metric)
-		if m != nil {
+		m, err := s.createObject(metric)
+		if err != nil {
+			return nil, fmt.Errorf("D! [serializer.splunkmetric] Dropping invalid metric: %s", metric.Name())
+		} else if m != nil {
 			serialized = append(serialized, m...)
 		}
 	}
@@ -111,6 +121,7 @@ func (s *serializer) createSingle(metric telegraf.Metric, dataGroup HECTimeSerie
 	var metricJSON []byte
 
 	for _, field := range metric.FieldList() {
+
 		value, valid := verifyValue(field.Value)
 
 		if !valid {
@@ -149,7 +160,8 @@ func (s *serializer) createSingle(metric telegraf.Metric, dataGroup HECTimeSerie
 	return metricGroup, nil
 }
 
-func (s *serializer) createObject(metric telegraf.Metric) (metricGroup []byte) {
+func (s *serializer) createObject(metric telegraf.Metric) (metricGroup []byte, err error) {
+
 	/*  Splunk supports one metric json object, and does _not_ support an array of JSON objects.
 	     ** Splunk has the following required names for the metric store:
 		 ** metric_name: The name of the metric
@@ -186,7 +198,7 @@ func (s *serializer) createObject(metric telegraf.Metric) (metricGroup []byte) {
 	}
 
 	// Return the metric group regardless of if it's multimetric or single metric.
-	return metricGroup
+	return metricGroup, nil
 }
 
 func verifyValue(v interface{}) (value interface{}, valid bool) {

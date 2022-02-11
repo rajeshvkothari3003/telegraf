@@ -14,8 +14,6 @@ type MailChimp struct {
 	APIKey     string `toml:"api_key"`
 	DaysOld    int    `toml:"days_old"`
 	CampaignID string `toml:"campaign_id"`
-
-	Log telegraf.Logger `toml:"-"`
 }
 
 var sampleConfig = `
@@ -37,13 +35,12 @@ func (m *MailChimp) Description() string {
 	return "Gathers metrics from the /3.0/reports MailChimp API"
 }
 
-func (m *MailChimp) Init() error {
-	m.api = NewChimpAPI(m.APIKey, m.Log)
-
-	return nil
-}
-
 func (m *MailChimp) Gather(acc telegraf.Accumulator) error {
+	if m.api == nil {
+		m.api = NewChimpAPI(m.APIKey)
+	}
+	m.api.Debug = false
+
 	if m.CampaignID == "" {
 		since := ""
 		if m.DaysOld > 0 {

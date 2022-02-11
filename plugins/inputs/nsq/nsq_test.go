@@ -15,8 +15,7 @@ import (
 func TestNSQStatsV1(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, err := fmt.Fprintln(w, responseV1)
-		require.NoError(t, err)
+		fmt.Fprintln(w, responseV1)
 	}))
 	defer ts.Close()
 
@@ -272,8 +271,7 @@ var responseV1 = `
 func TestNSQStatsPreV1(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, err := fmt.Fprintln(w, responsePreV1)
-		require.NoError(t, err)
+		fmt.Fprintln(w, responsePreV1)
 	}))
 	defer ts.Close()
 

@@ -5,11 +5,9 @@ import (
 	"encoding/base64"
 	"fmt"
 	"sync"
-	"time"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
 	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/outputs"
 	"github.com/influxdata/telegraf/plugins/serializers"
@@ -73,12 +71,12 @@ type PubSub struct {
 	Topic           string            `toml:"topic"`
 	Attributes      map[string]string `toml:"attributes"`
 
-	SendBatched           bool            `toml:"send_batched"`
-	PublishCountThreshold int             `toml:"publish_count_threshold"`
-	PublishByteThreshold  int             `toml:"publish_byte_threshold"`
-	PublishNumGoroutines  int             `toml:"publish_num_go_routines"`
-	PublishTimeout        config.Duration `toml:"publish_timeout"`
-	Base64Data            bool            `toml:"base64_data"`
+	SendBatched           bool              `toml:"send_batched"`
+	PublishCountThreshold int               `toml:"publish_count_threshold"`
+	PublishByteThreshold  int               `toml:"publish_byte_threshold"`
+	PublishNumGoroutines  int               `toml:"publish_num_go_routines"`
+	PublishTimeout        internal.Duration `toml:"publish_timeout"`
+	Base64Data            bool              `toml:"base64_data"`
 
 	Log telegraf.Logger `toml:"-"`
 
@@ -192,7 +190,7 @@ func (ps *PubSub) publishSettings() pubsub.PublishSettings {
 		settings.NumGoroutines = ps.PublishNumGoroutines
 	}
 
-	if time.Duration(ps.PublishTimeout) > 0 {
+	if ps.PublishTimeout.Duration > 0 {
 		settings.CountThreshold = 1
 	}
 

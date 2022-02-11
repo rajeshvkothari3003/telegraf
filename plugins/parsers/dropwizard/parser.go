@@ -3,15 +3,19 @@ package dropwizard
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"time"
-
-	"github.com/tidwall/gjson"
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/internal/templating"
 	"github.com/influxdata/telegraf/metric"
 	"github.com/influxdata/telegraf/plugins/parsers/influx"
+	"github.com/tidwall/gjson"
 )
+
+var fieldEscaper = strings.NewReplacer("\\", "\\\\", "\"", "\\\"")
+var keyEscaper = strings.NewReplacer(" ", "\\ ", ",", "\\,", "=", "\\=")
 
 type TimeFunc func() time.Time
 
@@ -19,6 +23,7 @@ type TimeFunc func() time.Time
 // either top-level or embedded inside a json field.
 // This parser is using gjson for retrieving paths within the json file.
 type parser struct {
+
 	// an optional json path containing the metric registry object
 	// if left empty, the whole json object is parsed as a metric registry
 	MetricRegistryPath string
@@ -42,8 +47,6 @@ type parser struct {
 	// an optional map of default tags to use for metrics
 	DefaultTags map[string]string
 
-	Log telegraf.Logger `toml:"-"`
-
 	separator      string
 	templateEngine *templating.Engine
 
@@ -66,6 +69,7 @@ func NewParser() *parser {
 
 // Parse parses the input bytes to an array of metrics
 func (p *parser) Parse(buf []byte) ([]telegraf.Metric, error) {
+
 	metrics := make([]telegraf.Metric, 0)
 
 	metricTime, err := p.parseTime(buf)
@@ -143,6 +147,7 @@ func (p *parser) SetDefaultTags(tags map[string]string) {
 }
 
 func (p *parser) readTags(buf []byte) map[string]string {
+
 	if p.TagsPath != "" {
 		var tagsBytes []byte
 		tagsResult := gjson.GetBytes(buf, p.TagsPath)
@@ -154,7 +159,7 @@ func (p *parser) readTags(buf []byte) map[string]string {
 		var tags map[string]string
 		err := json.Unmarshal(tagsBytes, &tags)
 		if err != nil {
-			p.Log.Warnf("Failed to parse tags from JSON path '%s': %s\n", p.TagsPath, err)
+			log.Printf("W! failed to parse tags from JSON path '%s': %s\n", p.TagsPath, err)
 		} else if len(tags) > 0 {
 			return tags
 		}
@@ -168,6 +173,7 @@ func (p *parser) readTags(buf []byte) map[string]string {
 }
 
 func (p *parser) parseTime(buf []byte) (time.Time, error) {
+
 	if p.TimePath != "" {
 		timeFormat := p.TimeFormat
 		if timeFormat == "" {
@@ -189,6 +195,7 @@ func (p *parser) parseTime(buf []byte) (time.Time, error) {
 }
 
 func (p *parser) unmarshalMetrics(buf []byte) (map[string]interface{}, error) {
+
 	var registryBytes []byte
 	if p.MetricRegistryPath != "" {
 		regResult := gjson.GetBytes(buf, p.MetricRegistryPath)
@@ -229,7 +236,11 @@ func (p *parser) readDWMetrics(metricType string, dwms interface{}, metrics []te
 			parsed, err := p.seriesParser.Parse([]byte(measurementName))
 			var m telegraf.Metric
 			if err != nil || len(parsed) != 1 {
-				m = metric.New(measurementName, map[string]string{}, map[string]interface{}{}, tm)
+				m, err = metric.New(measurementName, map[string]string{}, map[string]interface{}{}, tm)
+				if err != nil {
+					log.Printf("W! failed to create metric of type '%s': %s\n", metricType, err)
+					continue
+				}
 			} else {
 				m = parsed[0]
 				m.SetTime(tm)

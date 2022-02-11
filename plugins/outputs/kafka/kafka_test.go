@@ -5,12 +5,11 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/metric"
 	"github.com/influxdata/telegraf/plugins/serializers"
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 type topicSuffixTestpair struct {
@@ -51,10 +50,10 @@ func TestTopicSuffixesIntegration(t *testing.T) {
 
 	topic := "Test"
 
-	m := testutil.TestMetric(1)
+	metric := testutil.TestMetric(1)
 	metricTagName := "tag1"
-	metricTagValue := m.Tags()[metricTagName]
-	metricName := m.Name()
+	metricTagValue := metric.Tags()[metricTagName]
+	metricName := metric.Name()
 
 	var testcases = []topicSuffixTestpair{
 		// This ensures empty separator is okay
@@ -86,7 +85,7 @@ func TestTopicSuffixesIntegration(t *testing.T) {
 			TopicSuffix: topicSuffix,
 		}
 
-		_, topic := k.GetTopicName(m)
+		_, topic := k.GetTopicName(metric)
 		require.Equal(t, expectedTopic, topic)
 	}
 }
@@ -118,7 +117,7 @@ func TestRoutingKey(t *testing.T) {
 				RoutingKey: "static",
 			},
 			metric: func() telegraf.Metric {
-				m := metric.New(
+				m, _ := metric.New(
 					"cpu",
 					map[string]string{},
 					map[string]interface{}{
@@ -138,7 +137,7 @@ func TestRoutingKey(t *testing.T) {
 				RoutingKey: "random",
 			},
 			metric: func() telegraf.Metric {
-				m := metric.New(
+				m, _ := metric.New(
 					"cpu",
 					map[string]string{},
 					map[string]interface{}{
@@ -180,7 +179,7 @@ func (p *MockProducer) Close() error {
 	return nil
 }
 
-func NewMockProducer(_ []string, _ *sarama.Config) (sarama.SyncProducer, error) {
+func NewMockProducer(addrs []string, config *sarama.Config) (sarama.SyncProducer, error) {
 	return &MockProducer{}, nil
 }
 

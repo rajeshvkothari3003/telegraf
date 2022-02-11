@@ -34,7 +34,7 @@ func TestOutputShim(t *testing.T) {
 
 	serializer, _ := serializers.NewInfluxSerializer()
 
-	m := metric.New("thing",
+	m, _ := metric.New("thing",
 		map[string]string{
 			"a": "b",
 		},

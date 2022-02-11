@@ -1,4 +1,3 @@
-//go:build linux
 // +build linux
 
 package infiniband
@@ -131,4 +130,5 @@ func TestInfiniband(t *testing.T) {
 	addStats("m1x5_0", "1", sampleRdmastatsEntries, &acc)
 
 	acc.AssertContainsTaggedFields(t, "infiniband", fields, tags)
+
 }

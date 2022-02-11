@@ -99,12 +99,16 @@ func newMetricDiff(metric telegraf.Metric) *metricDiff {
 	m := &metricDiff{}
 	m.Measurement = metric.Name()
 
-	m.Tags = append(m.Tags, metric.TagList()...)
+	for _, tag := range metric.TagList() {
+		m.Tags = append(m.Tags, tag)
+	}
 	sort.Slice(m.Tags, func(i, j int) bool {
 		return m.Tags[i].Key < m.Tags[j].Key
 	})
 
-	m.Fields = append(m.Fields, metric.FieldList()...)
+	for _, field := range metric.FieldList() {
+		m.Fields = append(m.Fields, field)
+	}
 	sort.Slice(m.Fields, func(i, j int) bool {
 		return m.Fields[i].Key < m.Fields[j].Key
 	})
@@ -185,11 +189,17 @@ func MustMetric(
 	tm time.Time,
 	tp ...telegraf.ValueType,
 ) telegraf.Metric {
-	m := metric.New(name, tags, fields, tm, tp...)
+	m, err := metric.New(name, tags, fields, tm, tp...)
+	if err != nil {
+		panic("MustMetric")
+	}
 	return m
 }
 
 func FromTestMetric(met *Metric) telegraf.Metric {
-	m := metric.New(met.Measurement, met.Tags, met.Fields, met.Time, met.Type)
+	m, err := metric.New(met.Measurement, met.Tags, met.Fields, met.Time, met.Type)
+	if err != nil {
+		panic("MustMetric")
+	}
 	return m
 }

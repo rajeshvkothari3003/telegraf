@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMemcachedGeneratesMetricsIntegration(t *testing.T) {
@@ -32,7 +32,7 @@ func TestMemcachedGeneratesMetricsIntegration(t *testing.T) {
 		"bytes_read", "bytes_written", "threads", "conn_yields"}
 
 	for _, metric := range intMetrics {
-		require.True(t, acc.HasInt64Field("memcached", metric), metric)
+		assert.True(t, acc.HasInt64Field("memcached", metric), metric)
 	}
 }
 

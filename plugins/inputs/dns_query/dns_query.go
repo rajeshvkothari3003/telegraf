@@ -16,9 +16,9 @@ import (
 type ResultType uint64
 
 const (
-	Success ResultType = iota
-	Timeout
-	Error
+	Success ResultType = 0
+	Timeout            = 1
+	Error              = 2
 )
 
 type DNSQuery struct {

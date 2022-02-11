@@ -15,8 +15,7 @@ func TestRiak(t *testing.T) {
 	// Create a test server with the const response JSON
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, err := fmt.Fprintln(w, response)
-		require.NoError(t, err)
+		fmt.Fprintln(w, response)
 	}))
 	defer ts.Close()
 
@@ -32,7 +31,8 @@ func TestRiak(t *testing.T) {
 	acc := &testutil.Accumulator{}
 
 	// Gather data from the test server
-	require.NoError(t, riak.Gather(acc))
+	err = riak.Gather(acc)
+	require.NoError(t, err)
 
 	// Expect the correct values for all known keys
 	expectFields := map[string]interface{}{

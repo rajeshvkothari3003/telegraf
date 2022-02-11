@@ -1,9 +1,10 @@
 package ravendb
 
 import (
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -27,14 +28,16 @@ func TestRavenDBGeneratesMetricsFull(t *testing.T) {
 			jsonFilePath = "testdata/collections_full.json"
 
 		default:
-			require.Failf(t, "Cannot handle request for uri %s", r.URL.Path)
+			panic(fmt.Sprintf("Cannot handle request for uri %s", r.URL.Path))
 		}
 
-		data, err := os.ReadFile(jsonFilePath)
-		require.NoErrorf(t, err, "could not read from data file %s", jsonFilePath)
+		data, err := ioutil.ReadFile(jsonFilePath)
 
-		_, err = w.Write(data)
-		require.NoError(t, err)
+		if err != nil {
+			panic(fmt.Sprintf("could not read from data file %s", jsonFilePath))
+		}
+
+		w.Write(data)
 	}))
 	defer ts.Close()
 
@@ -44,7 +47,7 @@ func TestRavenDBGeneratesMetricsFull(t *testing.T) {
 		Log:          testutil.Logger{},
 	}
 
-	require.NoError(t, r.Init())
+	r.Init()
 
 	acc := &testutil.Accumulator{}
 
@@ -222,14 +225,16 @@ func TestRavenDBGeneratesMetricsMin(t *testing.T) {
 		case "/admin/monitoring/v1/collections":
 			jsonFilePath = "testdata/collections_min.json"
 		default:
-			require.Failf(t, "Cannot handle request for uri %s", r.URL.Path)
+			panic(fmt.Sprintf("Cannot handle request for uri %s", r.URL.Path))
 		}
 
-		data, err := os.ReadFile(jsonFilePath)
-		require.NoErrorf(t, err, "could not read from data file %s", jsonFilePath)
+		data, err := ioutil.ReadFile(jsonFilePath)
 
-		_, err = w.Write(data)
-		require.NoError(t, err)
+		if err != nil {
+			panic(fmt.Sprintf("could not read from data file %s", jsonFilePath))
+		}
+
+		w.Write(data)
 	}))
 	defer ts.Close()
 
@@ -239,7 +244,7 @@ func TestRavenDBGeneratesMetricsMin(t *testing.T) {
 		Log:          testutil.Logger{},
 	}
 
-	require.NoError(t, r.Init())
+	r.Init()
 
 	acc := &testutil.Accumulator{}
 

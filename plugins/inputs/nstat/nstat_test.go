@@ -12,8 +12,11 @@ func TestLoadUglyTable(t *testing.T) {
 		"IpExtInCEPkts":        int64(2660494435),
 	}
 
-	n := Nstat{DumpZeros: true}
-	got := n.loadUglyTable([]byte(uglyStr))
+	got, err := loadUglyTable([]byte(uglyStr), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if len(got) == 0 {
 		t.Fatalf("want %+v, got %+v", parsed, got)
 	}
@@ -37,8 +40,10 @@ func TestLoadGoodTable(t *testing.T) {
 		"Ip6InDelivers":     int64(62),
 		"Ip6InMcastOctets":  int64(1242966),
 	}
-	n := Nstat{DumpZeros: true}
-	got := n.loadGoodTable([]byte(goodStr))
+	got, err := loadGoodTable([]byte(goodStr), true)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) == 0 {
 		t.Fatalf("want %+v, got %+v", parsed, got)
 	}

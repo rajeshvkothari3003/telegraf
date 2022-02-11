@@ -13,34 +13,29 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/influxdata/go-syslog/v3"
-	"github.com/influxdata/go-syslog/v3/nontransparent"
-	"github.com/influxdata/go-syslog/v3/octetcounting"
-	"github.com/influxdata/go-syslog/v3/rfc3164"
-	"github.com/influxdata/go-syslog/v3/rfc5424"
+	"github.com/influxdata/go-syslog/v2"
+	"github.com/influxdata/go-syslog/v2/nontransparent"
+	"github.com/influxdata/go-syslog/v2/octetcounting"
+	"github.com/influxdata/go-syslog/v2/rfc5424"
+
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	framing "github.com/influxdata/telegraf/internal/syslog"
 	tlsConfig "github.com/influxdata/telegraf/plugins/common/tls"
 	"github.com/influxdata/telegraf/plugins/inputs"
 )
 
-type syslogRFC string
-
 const defaultReadTimeout = time.Second * 5
 const ipMaxPacketSize = 64 * 1024
-const syslogRFC3164 = "RFC3164"
-const syslogRFC5424 = "RFC5424"
 
 // Syslog is a syslog plugin
 type Syslog struct {
 	tlsConfig.ServerConfig
 	Address         string `toml:"server"`
-	KeepAlivePeriod *config.Duration
+	KeepAlivePeriod *internal.Duration
 	MaxConnections  int
-	ReadTimeout     *config.Duration
+	ReadTimeout     *internal.Duration
 	Framing         framing.Framing
-	SyslogStandard  syslogRFC
 	Trailer         nontransparent.TrailerType
 	BestEffort      bool
 	Separator       string `toml:"sdparam_separator"`
@@ -102,11 +97,6 @@ var sampleConfig = `
   ## By default best effort parsing is off.
   # best_effort = false
 
-  ## The RFC standard to use for message parsing
-  ## By default RFC5424 is used. RFC3164 only supports UDP transport (no streaming support)
-  ## Must be one of "RFC5424", or "RFC3164".
-  # syslog_standard = "RFC5424"
-
   ## Character to prepend to SD-PARAMs (default = "_").
   ## A syslog message can contain multiple parameters and multiple identifiers within structured data section.
   ## Eg., [id1 name1="val1" name2="val2"][id2 name1="val1" nameA="valA"]
@@ -151,8 +141,6 @@ func (s *Syslog) Start(acc telegraf.Accumulator) error {
 	}
 
 	if scheme == "unix" || scheme == "unixpacket" || scheme == "unixgram" {
-		// Accept success and failure in case the file does not exist
-		//nolint:errcheck,revive
 		os.Remove(s.Address)
 	}
 
@@ -195,8 +183,6 @@ func (s *Syslog) Stop() {
 	defer s.mu.Unlock()
 
 	if s.Closer != nil {
-		// Ignore the returned error as we cannot do anything about it anyway
-		//nolint:errcheck,revive
 		s.Close()
 	}
 	s.wg.Wait()
@@ -205,7 +191,7 @@ func (s *Syslog) Stop() {
 // getAddressParts returns the address scheme and host
 // it also sets defaults for them when missing
 // when the input address does not specify the protocol it returns an error
-func getAddressParts(a string) (scheme string, host string, err error) {
+func getAddressParts(a string) (string, string, error) {
 	parts := strings.SplitN(a, "://", 2)
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("missing protocol within address '%s'", a)
@@ -220,6 +206,7 @@ func getAddressParts(a string) (scheme string, host string, err error) {
 		return parts[0], parts[1], nil
 	}
 
+	var host string
 	if u.Hostname() != "" {
 		host = u.Hostname()
 	}
@@ -237,15 +224,10 @@ func (s *Syslog) listenPacket(acc telegraf.Accumulator) {
 	defer s.wg.Done()
 	b := make([]byte, ipMaxPacketSize)
 	var p syslog.Machine
-	switch {
-	case !s.BestEffort && s.SyslogStandard == syslogRFC5424:
-		p = rfc5424.NewParser()
-	case s.BestEffort && s.SyslogStandard == syslogRFC5424:
+	if s.BestEffort {
 		p = rfc5424.NewParser(rfc5424.WithBestEffort())
-	case !s.BestEffort && s.SyslogStandard == syslogRFC3164:
-		p = rfc3164.NewParser(rfc3164.WithYear(rfc3164.CurrentYear{}))
-	case s.BestEffort && s.SyslogStandard == syslogRFC3164:
-		p = rfc3164.NewParser(rfc3164.WithYear(rfc3164.CurrentYear{}), rfc3164.WithBestEffort())
+	} else {
+		p = rfc5424.NewParser()
 	}
 	for {
 		n, _, err := s.udpListener.ReadFrom(b)
@@ -258,7 +240,7 @@ func (s *Syslog) listenPacket(acc telegraf.Accumulator) {
 
 		message, err := p.Parse(b[:n])
 		if message != nil {
-			acc.AddFields("syslog", fields(message, s), tags(message), s.currentTime())
+			acc.AddFields("syslog", fields(message, s), tags(message), s.time())
 		}
 		if err != nil {
 			acc.AddError(err)
@@ -287,9 +269,7 @@ func (s *Syslog) listenStream(acc telegraf.Accumulator) {
 		s.connectionsMu.Lock()
 		if s.MaxConnections > 0 && len(s.connections) >= s.MaxConnections {
 			s.connectionsMu.Unlock()
-			if err := conn.Close(); err != nil {
-				acc.AddError(err)
-			}
+			conn.Close()
 			continue
 		}
 		s.connections[conn.RemoteAddr().String()] = conn
@@ -304,9 +284,7 @@ func (s *Syslog) listenStream(acc telegraf.Accumulator) {
 
 	s.connectionsMu.Lock()
 	for _, c := range s.connections {
-		if err := c.Close(); err != nil {
-			acc.AddError(err)
-		}
+		c.Close()
 	}
 	s.connectionsMu.Unlock()
 }
@@ -320,8 +298,6 @@ func (s *Syslog) removeConnection(c net.Conn) {
 func (s *Syslog) handle(conn net.Conn, acc telegraf.Accumulator) {
 	defer func() {
 		s.removeConnection(conn)
-		// Ignore the returned error as we cannot do anything about it anyway
-		//nolint:errcheck,revive
 		conn.Close()
 	}()
 
@@ -329,10 +305,8 @@ func (s *Syslog) handle(conn net.Conn, acc telegraf.Accumulator) {
 
 	emit := func(r *syslog.Result) {
 		s.store(*r, acc)
-		if s.ReadTimeout != nil && time.Duration(*s.ReadTimeout) > 0 {
-			if err := conn.SetReadDeadline(time.Now().Add(time.Duration(*s.ReadTimeout))); err != nil {
-				acc.AddError(fmt.Errorf("setting read deadline failed: %v", err))
-			}
+		if s.ReadTimeout != nil && s.ReadTimeout.Duration > 0 {
+			conn.SetReadDeadline(time.Now().Add(s.ReadTimeout.Duration))
 		}
 	}
 
@@ -356,10 +330,8 @@ func (s *Syslog) handle(conn net.Conn, acc telegraf.Accumulator) {
 
 	p.Parse(conn)
 
-	if s.ReadTimeout != nil && time.Duration(*s.ReadTimeout) > 0 {
-		if err := conn.SetReadDeadline(time.Now().Add(time.Duration(*s.ReadTimeout))); err != nil {
-			acc.AddError(fmt.Errorf("setting read deadline failed: %v", err))
-		}
+	if s.ReadTimeout != nil && s.ReadTimeout.Duration > 0 {
+		conn.SetReadDeadline(time.Now().Add(s.ReadTimeout.Duration))
 	}
 }
 
@@ -368,13 +340,13 @@ func (s *Syslog) setKeepAlive(c *net.TCPConn) error {
 		return nil
 	}
 
-	if *s.KeepAlivePeriod == 0 {
+	if s.KeepAlivePeriod.Duration == 0 {
 		return c.SetKeepAlive(false)
 	}
 	if err := c.SetKeepAlive(true); err != nil {
 		return err
 	}
-	return c.SetKeepAlivePeriod(time.Duration(*s.KeepAlivePeriod))
+	return c.SetKeepAlivePeriod(s.KeepAlivePeriod.Duration)
 }
 
 func (s *Syslog) store(res syslog.Result, acc telegraf.Accumulator) {
@@ -382,7 +354,7 @@ func (s *Syslog) store(res syslog.Result, acc telegraf.Accumulator) {
 		acc.AddError(res.Error)
 	}
 	if res.Message != nil {
-		acc.AddFields("syslog", fields(res.Message, s), tags(res.Message), s.currentTime())
+		acc.AddFields("syslog", fields(res.Message, s), tags(res.Message), s.time())
 	}
 }
 
@@ -393,70 +365,58 @@ func tags(msg syslog.Message) map[string]string {
 	ts["severity"] = *msg.SeverityShortLevel()
 	ts["facility"] = *msg.FacilityLevel()
 
-	switch m := msg.(type) {
-	case *rfc5424.SyslogMessage:
-		populateCommonTags(&m.Base, ts)
-	case *rfc3164.SyslogMessage:
-		populateCommonTags(&m.Base, ts)
+	if msg.Hostname() != nil {
+		ts["hostname"] = *msg.Hostname()
 	}
+
+	if msg.Appname() != nil {
+		ts["appname"] = *msg.Appname()
+	}
+
 	return ts
 }
 
 func fields(msg syslog.Message, s *Syslog) map[string]interface{} {
-	flds := map[string]interface{}{}
+	// Not checking assuming a minimally valid message
+	flds := map[string]interface{}{
+		"version": msg.Version(),
+	}
+	flds["severity_code"] = int(*msg.Severity())
+	flds["facility_code"] = int(*msg.Facility())
 
-	switch m := msg.(type) {
-	case *rfc5424.SyslogMessage:
-		populateCommonFields(&m.Base, flds)
-		// Not checking assuming a minimally valid message
-		flds["version"] = m.Version
-
-		if m.StructuredData != nil {
-			for sdid, sdparams := range *m.StructuredData {
-				if len(sdparams) == 0 {
-					// When SD-ID does not have params we indicate its presence with a bool
-					flds[sdid] = true
-					continue
-				}
-				for name, value := range sdparams {
-					// Using whitespace as separator since it is not allowed by the grammar within SDID
-					flds[sdid+s.Separator+name] = value
-				}
-			}
-		}
-	case *rfc3164.SyslogMessage:
-		populateCommonFields(&m.Base, flds)
+	if msg.Timestamp() != nil {
+		flds["timestamp"] = (*msg.Timestamp()).UnixNano()
 	}
 
-	return flds
-}
+	if msg.ProcID() != nil {
+		flds["procid"] = *msg.ProcID()
+	}
 
-func populateCommonFields(msg *syslog.Base, flds map[string]interface{}) {
-	flds["facility_code"] = int(*msg.Facility)
-	flds["severity_code"] = int(*msg.Severity)
-	if msg.Timestamp != nil {
-		flds["timestamp"] = (*msg.Timestamp).UnixNano()
+	if msg.MsgID() != nil {
+		flds["msgid"] = *msg.MsgID()
 	}
-	if msg.ProcID != nil {
-		flds["procid"] = *msg.ProcID
-	}
-	if msg.MsgID != nil {
-		flds["msgid"] = *msg.MsgID
-	}
-	if msg.Message != nil {
-		flds["message"] = strings.TrimRightFunc(*msg.Message, func(r rune) bool {
+
+	if msg.Message() != nil {
+		flds["message"] = strings.TrimRightFunc(*msg.Message(), func(r rune) bool {
 			return unicode.IsSpace(r)
 		})
 	}
-}
 
-func populateCommonTags(msg *syslog.Base, ts map[string]string) {
-	if msg.Hostname != nil {
-		ts["hostname"] = *msg.Hostname
+	if msg.StructuredData() != nil {
+		for sdid, sdparams := range *msg.StructuredData() {
+			if len(sdparams) == 0 {
+				// When SD-ID does not have params we indicate its presence with a bool
+				flds[sdid] = true
+				continue
+			}
+			for name, value := range sdparams {
+				// Using whitespace as separator since it is not allowed by the grammar within SDID
+				flds[sdid+s.Separator+name] = value
+			}
+		}
 	}
-	if msg.Appname != nil {
-		ts["appname"] = *msg.Appname
-	}
+
+	return flds
 }
 
 type unixCloser struct {
@@ -466,13 +426,11 @@ type unixCloser struct {
 
 func (uc unixCloser) Close() error {
 	err := uc.closer.Close()
-	// Accept success and failure in case the file does not exist
-	//nolint:errcheck,revive
-	os.Remove(uc.path)
+	os.Remove(uc.path) // ignore error
 	return err
 }
 
-func (s *Syslog) currentTime() time.Time {
+func (s *Syslog) time() time.Time {
 	t := s.now()
 	if t == s.lastTime {
 		t = t.Add(time.Nanosecond)
@@ -486,16 +444,16 @@ func getNanoNow() time.Time {
 }
 
 func init() {
-	defaultTimeout := config.Duration(defaultReadTimeout)
 	inputs.Add("syslog", func() telegraf.Input {
 		return &Syslog{
-			Address:        ":6514",
-			now:            getNanoNow,
-			ReadTimeout:    &defaultTimeout,
-			Framing:        framing.OctetCounting,
-			SyslogStandard: syslogRFC5424,
-			Trailer:        nontransparent.LF,
-			Separator:      "_",
+			Address: ":6514",
+			now:     getNanoNow,
+			ReadTimeout: &internal.Duration{
+				Duration: defaultReadTimeout,
+			},
+			Framing:   framing.OctetCounting,
+			Trailer:   nontransparent.LF,
+			Separator: "_",
 		}
 	})
 }

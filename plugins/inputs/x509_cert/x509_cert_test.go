@@ -4,8 +4,8 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"math/big"
-	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/dtls/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	_tls "github.com/influxdata/telegraf/plugins/common/tls"
 	"github.com/influxdata/telegraf/testutil"
 )
@@ -30,13 +30,16 @@ var _ telegraf.Input = &X509Cert{}
 func TestGatherRemoteIntegration(t *testing.T) {
 	t.Skip("Skipping network-dependent test due to race condition when test-all")
 
-	tmpfile, err := os.CreateTemp("", "example")
-	require.NoError(t, err)
+	tmpfile, err := ioutil.TempFile("", "example")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	defer os.Remove(tmpfile.Name())
 
-	_, err = tmpfile.Write([]byte(pki.ReadServerCert()))
-	require.NoError(t, err)
+	if _, err := tmpfile.Write([]byte(pki.ReadServerCert())); err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		name    string
@@ -58,9 +61,11 @@ func TestGatherRemoteIntegration(t *testing.T) {
 	}
 
 	pair, err := tls.X509KeyPair([]byte(pki.ReadServerCert()), []byte(pki.ReadServerKey()))
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	cfg := &tls.Config{
+	config := &tls.Config{
 		InsecureSkipVerify: true,
 		Certificates:       []tls.Certificate{pair},
 	}
@@ -68,30 +73,36 @@ func TestGatherRemoteIntegration(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if test.unset {
-				cfg.Certificates = nil
-				cfg.GetCertificate = func(i *tls.ClientHelloInfo) (*tls.Certificate, error) {
+				config.Certificates = nil
+				config.GetCertificate = func(i *tls.ClientHelloInfo) (*tls.Certificate, error) {
 					return nil, nil
 				}
 			}
 
-			ln, err := tls.Listen("tcp", ":0", cfg)
-			require.NoError(t, err)
+			ln, err := tls.Listen("tcp", ":0", config)
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer ln.Close()
 
 			go func() {
 				sconn, err := ln.Accept()
-				require.NoError(t, err)
+				if err != nil {
+					return
+				}
 				if test.close {
 					sconn.Close()
 				}
 
-				serverConfig := cfg.Clone()
+				serverConfig := config.Clone()
 
 				srv := tls.Server(sconn, serverConfig)
 				if test.noshake {
 					srv.Close()
 				}
-				require.NoError(t, srv.Handshake())
+				if err := srv.Handshake(); err != nil {
+					return
+				}
 			}()
 
 			if test.server == "" {
@@ -100,9 +111,9 @@ func TestGatherRemoteIntegration(t *testing.T) {
 
 			sc := X509Cert{
 				Sources: []string{test.server},
-				Timeout: config.Duration(test.timeout),
+				Timeout: internal.Duration{Duration: test.timeout},
 			}
-			require.NoError(t, sc.Init())
+			sc.Init()
 
 			sc.InsecureSkipVerify = true
 			testErr := false
@@ -147,29 +158,44 @@ func TestGatherLocal(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			f, err := os.CreateTemp("", "x509_cert")
-			require.NoError(t, err)
-
-			_, err = f.Write([]byte(test.content))
-			require.NoError(t, err)
-
-			if runtime.GOOS != "windows" {
-				require.NoError(t, f.Chmod(test.mode))
+			f, err := ioutil.TempFile("", "x509_cert")
+			if err != nil {
+				t.Fatal(err)
 			}
 
-			require.NoError(t, f.Close())
+			_, err = f.Write([]byte(test.content))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if runtime.GOOS != "windows" {
+				err = f.Chmod(test.mode)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			err = f.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			defer os.Remove(f.Name())
 
 			sc := X509Cert{
 				Sources: []string{f.Name()},
 			}
-			require.NoError(t, sc.Init())
+			sc.Init()
+
+			error := false
 
 			acc := testutil.Accumulator{}
 			err = sc.Gather(&acc)
+			if len(acc.Errors) > 0 {
+				error = true
+			}
 
-			if (len(acc.Errors) > 0) != test.error {
+			if error != test.error {
 				t.Errorf("%s", err)
 			}
 		})
@@ -179,75 +205,56 @@ func TestGatherLocal(t *testing.T) {
 func TestTags(t *testing.T) {
 	cert := fmt.Sprintf("%s\n%s", pki.ReadServerCert(), pki.ReadCACert())
 
-	f, err := os.CreateTemp("", "x509_cert")
-	require.NoError(t, err)
+	f, err := ioutil.TempFile("", "x509_cert")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	_, err = f.Write([]byte(cert))
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	require.NoError(t, f.Close())
+	err = f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	defer os.Remove(f.Name())
 
 	sc := X509Cert{
 		Sources: []string{f.Name()},
 	}
-	require.NoError(t, sc.Init())
+	sc.Init()
 
 	acc := testutil.Accumulator{}
-	require.NoError(t, sc.Gather(&acc))
+	err = sc.Gather(&acc)
+	require.NoError(t, err)
 
-	require.True(t, acc.HasMeasurement("x509_cert"))
+	assert.True(t, acc.HasMeasurement("x509_cert"))
 
-	require.True(t, acc.HasTag("x509_cert", "common_name"))
-	require.Equal(t, "server.localdomain", acc.TagValue("x509_cert", "common_name"))
+	assert.True(t, acc.HasTag("x509_cert", "common_name"))
+	assert.Equal(t, "server.localdomain", acc.TagValue("x509_cert", "common_name"))
 
-	require.True(t, acc.HasTag("x509_cert", "signature_algorithm"))
-	require.Equal(t, "SHA256-RSA", acc.TagValue("x509_cert", "signature_algorithm"))
+	assert.True(t, acc.HasTag("x509_cert", "signature_algorithm"))
+	assert.Equal(t, "SHA256-RSA", acc.TagValue("x509_cert", "signature_algorithm"))
 
-	require.True(t, acc.HasTag("x509_cert", "public_key_algorithm"))
-	require.Equal(t, "RSA", acc.TagValue("x509_cert", "public_key_algorithm"))
+	assert.True(t, acc.HasTag("x509_cert", "public_key_algorithm"))
+	assert.Equal(t, "RSA", acc.TagValue("x509_cert", "public_key_algorithm"))
 
-	require.True(t, acc.HasTag("x509_cert", "issuer_common_name"))
-	require.Equal(t, "Telegraf Test CA", acc.TagValue("x509_cert", "issuer_common_name"))
+	assert.True(t, acc.HasTag("x509_cert", "issuer_common_name"))
+	assert.Equal(t, "Telegraf Test CA", acc.TagValue("x509_cert", "issuer_common_name"))
 
-	require.True(t, acc.HasTag("x509_cert", "san"))
-	require.Equal(t, "localhost,127.0.0.1", acc.TagValue("x509_cert", "san"))
+	assert.True(t, acc.HasTag("x509_cert", "san"))
+	assert.Equal(t, "localhost,127.0.0.1", acc.TagValue("x509_cert", "san"))
 
-	require.True(t, acc.HasTag("x509_cert", "serial_number"))
+	assert.True(t, acc.HasTag("x509_cert", "serial_number"))
 	serialNumber := new(big.Int)
 	_, validSerialNumber := serialNumber.SetString(acc.TagValue("x509_cert", "serial_number"), 16)
-	require.Truef(t, validSerialNumber, "Expected a valid Hex serial number but got %s", acc.TagValue("x509_cert", "serial_number"))
-	require.Equal(t, big.NewInt(1), serialNumber)
-
-	// expect root/intermediate certs (more than one cert)
-	require.Greater(t, acc.NMetrics(), uint64(1))
-}
-
-func TestGatherExcludeRootCerts(t *testing.T) {
-	cert := fmt.Sprintf("%s\n%s", pki.ReadServerCert(), pki.ReadCACert())
-
-	f, err := os.CreateTemp("", "x509_cert")
-	require.NoError(t, err)
-
-	_, err = f.Write([]byte(cert))
-	require.NoError(t, err)
-
-	require.NoError(t, f.Close())
-
-	defer os.Remove(f.Name())
-
-	sc := X509Cert{
-		Sources:          []string{f.Name()},
-		ExcludeRootCerts: true,
+	if !validSerialNumber {
+		t.Errorf("Expected a valid Hex serial number but got %s", acc.TagValue("x509_cert", "serial_number"))
 	}
-	require.NoError(t, sc.Init())
-
-	acc := testutil.Accumulator{}
-	require.NoError(t, sc.Gather(&acc))
-
-	require.True(t, acc.HasMeasurement("x509_cert"))
-	require.Equal(t, acc.NMetrics(), uint64(1))
+	assert.Equal(t, big.NewInt(1), serialNumber)
 }
 
 func TestGatherChain(t *testing.T) {
@@ -263,66 +270,47 @@ func TestGatherChain(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			f, err := os.CreateTemp("", "x509_cert")
-			require.NoError(t, err)
+			f, err := ioutil.TempFile("", "x509_cert")
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			_, err = f.Write([]byte(test.content))
-			require.NoError(t, err)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-			require.NoError(t, f.Close())
+			err = f.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			defer os.Remove(f.Name())
 
 			sc := X509Cert{
 				Sources: []string{f.Name()},
 			}
-			require.NoError(t, sc.Init())
+			sc.Init()
+
+			error := false
 
 			acc := testutil.Accumulator{}
 			err = sc.Gather(&acc)
-			if (err != nil) != test.error {
+			if err != nil {
+				error = true
+			}
+
+			if error != test.error {
 				t.Errorf("%s", err)
 			}
 		})
 	}
-}
 
-func TestGatherUDPCert(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-	pair, err := tls.X509KeyPair([]byte(pki.ReadServerCert()), []byte(pki.ReadServerKey()))
-	require.NoError(t, err)
-
-	cfg := &dtls.Config{
-		Certificates: []tls.Certificate{pair},
-	}
-
-	addr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0}
-	listener, err := dtls.Listen("udp", addr, cfg)
-	require.NoError(t, err)
-	defer listener.Close()
-
-	go func() {
-		_, _ = listener.Accept()
-	}()
-
-	m := &X509Cert{
-		Sources: []string{"udp://" + listener.Addr().String()},
-		Log:     testutil.Logger{},
-	}
-	require.NoError(t, m.Init())
-
-	var acc testutil.Accumulator
-	require.NoError(t, m.Gather(&acc))
-
-	require.Len(t, acc.Errors, 0)
-	require.True(t, acc.HasMeasurement("x509_cert"))
 }
 
 func TestStrings(t *testing.T) {
 	sc := X509Cert{}
-	require.NoError(t, sc.Init())
+	sc.Init()
 
 	tests := []struct {
 		name     string
@@ -351,12 +339,13 @@ func TestGatherCertIntegration(t *testing.T) {
 	m := &X509Cert{
 		Sources: []string{"https://www.influxdata.com:443"},
 	}
-	require.NoError(t, m.Init())
+	m.Init()
 
 	var acc testutil.Accumulator
-	require.NoError(t, m.Gather(&acc))
+	err := m.Gather(&acc)
+	require.NoError(t, err)
 
-	require.True(t, acc.HasMeasurement("x509_cert"))
+	assert.True(t, acc.HasMeasurement("x509_cert"))
 }
 
 func TestGatherCertMustNotTimeout(t *testing.T) {
@@ -366,24 +355,15 @@ func TestGatherCertMustNotTimeout(t *testing.T) {
 	duration := time.Duration(15) * time.Second
 	m := &X509Cert{
 		Sources: []string{"https://www.influxdata.com:443"},
-		Timeout: config.Duration(duration),
+		Timeout: internal.Duration{Duration: duration},
 	}
-	require.NoError(t, m.Init())
+	m.Init()
 
 	var acc testutil.Accumulator
-	require.NoError(t, m.Gather(&acc))
+	err := m.Gather(&acc)
+	require.NoError(t, err)
 	require.Empty(t, acc.Errors)
-	require.True(t, acc.HasMeasurement("x509_cert"))
-}
-
-func TestSourcesToURLs(t *testing.T) {
-	m := &X509Cert{
-		Sources: []string{"https://www.influxdata.com:443", "tcp://influxdata.com:443", "file:///dummy_test_path_file.pem", "/tmp/dummy_test_path_glob*.pem"},
-	}
-	require.NoError(t, m.Init())
-
-	require.Equal(t, len(m.globpaths), 2)
-	require.Equal(t, len(m.locations), 2)
+	assert.True(t, acc.HasMeasurement("x509_cert"))
 }
 
 func TestServerName(t *testing.T) {
@@ -408,16 +388,16 @@ func TestServerName(t *testing.T) {
 				ServerName:   test.fromCfg,
 				ClientConfig: _tls.ClientConfig{ServerName: test.fromTLS},
 			}
-			require.NoError(t, sc.Init())
+			sc.Init()
 			u, err := url.Parse(test.url)
 			require.NoError(t, err)
 			actual, err := sc.serverName(u)
 			if test.err {
-				require.Error(t, err)
+				assert.Error(t, err)
 			} else {
-				require.NoError(t, err)
+				assert.NoError(t, err)
 			}
-			require.Equal(t, test.expected, actual)
+			assert.Equal(t, test.expected, actual)
 		})
 	}
 }

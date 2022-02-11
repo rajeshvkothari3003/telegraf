@@ -15,8 +15,7 @@ func TestMarklogic(t *testing.T) {
 	// Create a test server with the const response JSON
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, err := fmt.Fprintln(w, response)
-		require.NoError(t, err)
+		fmt.Fprintln(w, response)
 	}))
 	defer ts.Close()
 
@@ -28,7 +27,7 @@ func TestMarklogic(t *testing.T) {
 
 	ml := &Marklogic{
 		Hosts: []string{"example1"},
-		URL:   ts.URL,
+		URL:   string(ts.URL),
 		//Sources: []string{"http://localhost:8002/manage/v2/hosts/hostname1?view=status&format=json"},
 	}
 
@@ -77,6 +76,7 @@ func TestMarklogic(t *testing.T) {
 	}
 
 	acc.AssertContainsTaggedFields(t, "marklogic", expectFields, expectTags)
+
 }
 
 var response = `

@@ -6,12 +6,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/testutil"
 	"github.com/influxdata/toml"
 	"github.com/influxdata/toml/ast"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestJolokia2_ScalarValues(t *testing.T) {
@@ -75,12 +74,12 @@ func TestJolokia2_ScalarValues(t *testing.T) {
 		"status": 200
 	  }]`
 
-	server := setupServer(response)
+	server := setupServer(http.StatusOK, response)
 	defer server.Close()
 	plugin := setupPlugin(t, fmt.Sprintf(config, server.URL))
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	assert.NoError(t, plugin.Gather(&acc))
 
 	acc.AssertContainsTaggedFields(t, "scalar_without_attribute", map[string]interface{}{
 		"value": 123.0,
@@ -235,12 +234,12 @@ func TestJolokia2_ObjectValues(t *testing.T) {
 		"status": 200
 	  }]`
 
-	server := setupServer(response)
+	server := setupServer(http.StatusOK, response)
 	defer server.Close()
 	plugin := setupPlugin(t, fmt.Sprintf(config, server.URL))
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	assert.NoError(t, plugin.Gather(&acc))
 
 	acc.AssertContainsTaggedFields(t, "object_without_attribute", map[string]interface{}{
 		"biz": 123.0,
@@ -323,12 +322,12 @@ func TestJolokia2_StatusCodes(t *testing.T) {
 		"status": 500
 	}]`
 
-	server := setupServer(response)
+	server := setupServer(http.StatusOK, response)
 	defer server.Close()
 	plugin := setupPlugin(t, fmt.Sprintf(config, server.URL))
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	assert.NoError(t, plugin.Gather(&acc))
 
 	acc.AssertContainsTaggedFields(t, "ok", map[string]interface{}{
 		"value": 1.0,
@@ -373,12 +372,12 @@ func TestJolokia2_TagRenaming(t *testing.T) {
 		"status": 200
 	}]`
 
-	server := setupServer(response)
+	server := setupServer(http.StatusOK, response)
 	defer server.Close()
 	plugin := setupPlugin(t, fmt.Sprintf(config, server.URL))
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	assert.NoError(t, plugin.Gather(&acc))
 
 	acc.AssertContainsTaggedFields(t, "default_tag_prefix", map[string]interface{}{
 		"value": 123.0,
@@ -466,12 +465,12 @@ func TestJolokia2_FieldRenaming(t *testing.T) {
 		"status": 200
 	}]`
 
-	server := setupServer(response)
+	server := setupServer(http.StatusOK, response)
 	defer server.Close()
 	plugin := setupPlugin(t, fmt.Sprintf(config, server.URL))
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	assert.NoError(t, plugin.Gather(&acc))
 
 	acc.AssertContainsTaggedFields(t, "default_field_modifiers", map[string]interface{}{
 		"DEFAULT_PREFIX_hello_DEFAULT_SEPARATOR_world": 123.0,
@@ -574,12 +573,12 @@ func TestJolokia2_MetricMbeanMatching(t *testing.T) {
 		"status": 200
 	}]`
 
-	server := setupServer(response)
+	server := setupServer(http.StatusOK, response)
 	defer server.Close()
 	plugin := setupPlugin(t, fmt.Sprintf(config, server.URL))
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	assert.NoError(t, plugin.Gather(&acc))
 
 	acc.AssertContainsTaggedFields(t, "mbean_name_and_object_keys", map[string]interface{}{
 		"value": 123.0,
@@ -667,12 +666,12 @@ func TestJolokia2_MetricCompaction(t *testing.T) {
 		"status": 200
 	}]`
 
-	server := setupServer(response)
+	server := setupServer(http.StatusOK, response)
 	defer server.Close()
 	plugin := setupPlugin(t, fmt.Sprintf(config, server.URL))
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	assert.NoError(t, plugin.Gather(&acc))
 
 	acc.AssertContainsTaggedFields(t, "compact_metric", map[string]interface{}{
 		"value": 123.0,
@@ -728,12 +727,12 @@ func TestJolokia2_ProxyTargets(t *testing.T) {
 		"status": 200
 	}]`
 
-	server := setupServer(response)
+	server := setupServer(http.StatusOK, response)
 	defer server.Close()
 	plugin := setupPlugin(t, fmt.Sprintf(config, server.URL))
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	assert.NoError(t, plugin.Gather(&acc))
 
 	acc.AssertContainsTaggedFields(t, "hello", map[string]interface{}{
 		"value": 123.0,
@@ -750,23 +749,27 @@ func TestJolokia2_ProxyTargets(t *testing.T) {
 }
 
 func TestFillFields(t *testing.T) {
-	complexPoint := map[string]interface{}{"Value": []interface{}{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
-	scalarPoint := []interface{}{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	complex := map[string]interface{}{"Value": []interface{}{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+	var scalar interface{}
+	scalar = []interface{}{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
 	results := map[string]interface{}{}
-	newPointBuilder(Metric{Name: "test", Mbean: "complex"}, []string{"this", "that"}, "/").fillFields("", complexPoint, results)
-	require.Equal(t, map[string]interface{}{}, results)
+	newPointBuilder(Metric{Name: "test", Mbean: "complex"}, []string{"this", "that"}, "/").fillFields("", complex, results)
+	assert.Equal(t, map[string]interface{}{}, results)
 
 	results = map[string]interface{}{}
-	newPointBuilder(Metric{Name: "test", Mbean: "scalar"}, []string{"this", "that"}, "/").fillFields("", scalarPoint, results)
-	require.Equal(t, map[string]interface{}{}, results)
+	newPointBuilder(Metric{Name: "test", Mbean: "scalar"}, []string{"this", "that"}, "/").fillFields("", scalar, results)
+	assert.Equal(t, map[string]interface{}{}, results)
 }
 
-func setupServer(resp string) *httptest.Server {
+func setupServer(status int, resp string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		// Ignore the returned error as the tests will fail anyway
-		//nolint:errcheck,revive
+		//body, err := ioutil.ReadAll(r.Body)
+		//if err == nil {
+		//	fmt.Println(string(body))
+		//}
+
 		fmt.Fprintln(w, resp)
 	}))
 }

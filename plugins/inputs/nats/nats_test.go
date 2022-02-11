@@ -1,4 +1,3 @@
-//go:build !freebsd || (freebsd && cgo)
 // +build !freebsd freebsd,cgo
 
 package nats
@@ -70,17 +69,12 @@ var sampleVarz = `
 func TestMetricsCorrect(t *testing.T) {
 	var acc testutil.Accumulator
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, r.URL.Path, "/varz", "Cannot handle request")
-
-		rsp := sampleVarz
-		_, err := fmt.Fprintln(w, rsp)
-		require.NoError(t, err)
-	}))
+	srv := newTestNatsServer()
 	defer srv.Close()
 
 	n := &Nats{Server: srv.URL}
-	require.NoError(t, n.Gather(&acc))
+	err := n.Gather(&acc)
+	require.NoError(t, err)
 
 	fields := map[string]interface{}{
 		"in_msgs":           int64(74148556),
@@ -102,4 +96,19 @@ func TestMetricsCorrect(t *testing.T) {
 		"server": srv.URL,
 	}
 	acc.AssertContainsTaggedFields(t, "nats", fields, tags)
+}
+
+func newTestNatsServer() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var rsp string
+
+		switch r.URL.Path {
+		case "/varz":
+			rsp = sampleVarz
+		default:
+			panic("Cannot handle request")
+		}
+
+		fmt.Fprintln(w, rsp)
+	}))
 }

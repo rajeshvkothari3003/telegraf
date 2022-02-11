@@ -3,35 +3,20 @@ package shim
 import (
 	"bufio"
 	"io"
-	"math/rand"
+	"io/ioutil"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/metric"
 	"github.com/influxdata/telegraf/plugins/parsers"
 	"github.com/influxdata/telegraf/plugins/serializers"
+	"github.com/stretchr/testify/require"
 )
 
 func TestProcessorShim(t *testing.T) {
-	testSendAndRecieve(t, "f1", "fv1")
-}
-
-func TestProcessorShimWithLargerThanDefaultScannerBufferSize(t *testing.T) {
-	letters := []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	b := make([]rune, bufio.MaxScanTokenSize*2)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
-	}
-
-	testSendAndRecieve(t, "f1", string(b))
-}
-
-func testSendAndRecieve(t *testing.T, fieldKey string, fieldValue string) {
-	p := &testProcessor{"hi", "mom"}
+	p := &testProcessor{}
 
 	stdinReader, stdinWriter := io.Pipe()
 	stdoutReader, stdoutWriter := io.Pipe()
@@ -55,13 +40,12 @@ func testSendAndRecieve(t *testing.T, fieldKey string, fieldValue string) {
 	serializer, _ := serializers.NewInfluxSerializer()
 	parser, _ := parsers.NewInfluxParser()
 
-	m := metric.New("thing",
+	m, _ := metric.New("thing",
 		map[string]string{
 			"a": "b",
 		},
 		map[string]interface{}{
-			"v":      1,
-			fieldKey: fieldValue,
+			"v": 1,
 		},
 		time.Now(),
 	)
@@ -78,26 +62,19 @@ func testSendAndRecieve(t *testing.T, fieldKey string, fieldValue string) {
 	mOut, err := parser.ParseLine(out)
 	require.NoError(t, err)
 
-	val, ok := mOut.GetTag(p.tagName)
+	val, ok := mOut.GetTag("hi")
 	require.True(t, ok)
-	require.Equal(t, p.tagValue, val)
-	val2, ok := mOut.Fields()[fieldKey]
-	require.True(t, ok)
-	require.Equal(t, fieldValue, val2)
-	go func() {
-		_, _ = io.ReadAll(r)
-	}()
+	require.Equal(t, "mom", val)
+
+	go ioutil.ReadAll(r)
 	wg.Wait()
 }
 
-type testProcessor struct {
-	tagName  string
-	tagValue string
-}
+type testProcessor struct{}
 
 func (p *testProcessor) Apply(in ...telegraf.Metric) []telegraf.Metric {
-	for _, m := range in {
-		m.AddTag(p.tagName, p.tagValue)
+	for _, metric := range in {
+		metric.AddTag("hi", "mom")
 	}
 	return in
 }

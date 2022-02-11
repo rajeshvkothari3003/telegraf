@@ -108,6 +108,7 @@ func readServices(r io.Reader) sMap {
 
 func (pn *PortName) Apply(metrics ...telegraf.Metric) []telegraf.Metric {
 	for _, m := range metrics {
+
 		var portProto string
 		var fromField bool
 

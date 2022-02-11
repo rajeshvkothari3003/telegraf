@@ -3,14 +3,17 @@ package unbound
 import (
 	"bytes"
 	"testing"
+	"time"
 
-	"github.com/stretchr/testify/require"
-
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
-func UnboundControl(output string) func(unbound Unbound) (*bytes.Buffer, error) {
-	return func(unbound Unbound) (*bytes.Buffer, error) {
+var TestTimeout = internal.Duration{Duration: time.Second}
+
+func UnboundControl(output string, Timeout internal.Duration, useSudo bool, Server string, ThreadAsTag bool, ConfigFile string) func(string, internal.Duration, bool, string, bool, string) (*bytes.Buffer, error) {
+	return func(string, internal.Duration, bool, string, bool, string) (*bytes.Buffer, error) {
 		return bytes.NewBuffer([]byte(output)), nil
 	}
 }
@@ -18,16 +21,16 @@ func UnboundControl(output string) func(unbound Unbound) (*bytes.Buffer, error) 
 func TestParseFullOutput(t *testing.T) {
 	acc := &testutil.Accumulator{}
 	v := &Unbound{
-		run: UnboundControl(fullOutput),
+		run: UnboundControl(fullOutput, TestTimeout, true, "", false, ""),
 	}
 	err := v.Gather(acc)
 
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
-	require.True(t, acc.HasMeasurement("unbound"))
+	assert.True(t, acc.HasMeasurement("unbound"))
 
-	require.Len(t, acc.Metrics, 1)
-	require.Equal(t, acc.NFields(), 63)
+	assert.Len(t, acc.Metrics, 1)
+	assert.Equal(t, acc.NFields(), 63)
 
 	acc.AssertContainsFields(t, "unbound", parsedFullOutput)
 }
@@ -35,18 +38,18 @@ func TestParseFullOutput(t *testing.T) {
 func TestParseFullOutputThreadAsTag(t *testing.T) {
 	acc := &testutil.Accumulator{}
 	v := &Unbound{
-		run:         UnboundControl(fullOutput),
+		run:         UnboundControl(fullOutput, TestTimeout, true, "", true, ""),
 		ThreadAsTag: true,
 	}
 	err := v.Gather(acc)
 
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
-	require.True(t, acc.HasMeasurement("unbound"))
-	require.True(t, acc.HasMeasurement("unbound_threads"))
+	assert.True(t, acc.HasMeasurement("unbound"))
+	assert.True(t, acc.HasMeasurement("unbound_threads"))
 
-	require.Len(t, acc.Metrics, 2)
-	require.Equal(t, acc.NFields(), 63)
+	assert.Len(t, acc.Metrics, 2)
+	assert.Equal(t, acc.NFields(), 63)
 
 	acc.AssertContainsFields(t, "unbound", parsedFullOutputThreadAsTagMeasurementUnbound)
 	acc.AssertContainsFields(t, "unbound_threads", parsedFullOutputThreadAsTagMeasurementUnboundThreads)

@@ -1,4 +1,3 @@
-//go:build !windows
 // +build !windows
 
 package intel_rdt
@@ -14,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -47,7 +45,6 @@ type IntelRDT struct {
 	Processes        []string `toml:"processes"`
 	SamplingInterval int32    `toml:"sampling_interval"`
 	ShortenedMetrics bool     `toml:"shortened_metrics"`
-	UseSudo          bool     `toml:"use_sudo"`
 
 	Log              telegraf.Logger  `toml:"-"`
 	Publisher        Publisher        `toml:"-"`
@@ -64,12 +61,6 @@ type IntelRDT struct {
 type processMeasurement struct {
 	name        string
 	measurement string
-}
-
-type splitCSVLine struct {
-	timeValue        string
-	metricsValues    []string
-	coreOrPIDsValues []string
 }
 
 // All gathering is done in the Start function
@@ -105,10 +96,6 @@ func (r *IntelRDT) SampleConfig() string {
 	## Mandatory if cores aren't set and forbidden if cores are specified.
 	## e.g. ["qemu", "pmd"]
 	# processes = ["process"]
-
-	## Specify if the pqos process should be called with sudo.
-	## Mandatory if the telegraf process does not run as root.
-	# use_sudo = false
 `
 }
 
@@ -236,8 +223,8 @@ func (r *IntelRDT) associateProcessesWithPIDs(providedProcesses []string) (map[s
 	}
 	for _, availableProcess := range availableProcesses {
 		if choice.Contains(availableProcess.Name, providedProcesses) {
-			pid := availableProcess.PID
-			mapProcessPIDs[availableProcess.Name] = mapProcessPIDs[availableProcess.Name] + fmt.Sprintf("%d", pid) + ","
+			PID := availableProcess.PID
+			mapProcessPIDs[availableProcess.Name] = mapProcessPIDs[availableProcess.Name] + fmt.Sprintf("%d", PID) + ","
 		}
 	}
 	for key := range mapProcessPIDs {
@@ -258,19 +245,14 @@ func (r *IntelRDT) createArgsAndStartPQOS(ctx context.Context) {
 		args = append(args, processArg)
 		go r.readData(ctx, args, r.processesPIDsMap)
 	}
+	return
 }
 
 func (r *IntelRDT) readData(ctx context.Context, args []string, processesPIDsAssociation map[string]string) {
 	r.wg.Add(1)
 	defer r.wg.Done()
 
-	cmd := exec.Command(r.PqosPath, args...)
-
-	if r.UseSudo {
-		// run pqos with `/bin/sh -c "sudo /path/to/pqos ..."`
-		args = []string{"-c", fmt.Sprintf("sudo %s %s", r.PqosPath, strings.Replace(strings.Join(args, " "), ";", "\\;", -1))}
-		cmd = exec.Command("/bin/sh", args...)
-	}
+	cmd := exec.Command(r.PqosPath, append(args)...)
 
 	cmdReader, err := cmd.StdoutPipe()
 	if err != nil {
@@ -296,12 +278,12 @@ func (r *IntelRDT) readData(ctx context.Context, args []string, processesPIDsAss
 	}()
 	err = cmd.Start()
 	if err != nil {
-		r.Log.Errorf("pqos: %v", err)
+		r.errorChan <- fmt.Errorf("pqos: %v", err)
 		return
 	}
 	err = cmd.Wait()
 	if err != nil {
-		r.Log.Errorf("pqos: %v", err)
+		r.errorChan <- fmt.Errorf("pqos: %v", err)
 	}
 }
 
@@ -316,9 +298,11 @@ func (r *IntelRDT) processOutput(cmdReader io.ReadCloser, processesPIDsAssociati
 	*/
 	toOmit := pqosInitOutputLinesNumber
 
-	if len(r.parsedCores) != 0 { // omit first measurements which are zeroes
+	// omit first measurements which are zeroes
+	if len(r.parsedCores) != 0 {
 		toOmit = toOmit + len(r.parsedCores)
-	} else if len(processesPIDsAssociation) != 0 { // specify how many lines should pass before stopping
+		// specify how many lines should pass before stopping
+	} else if len(processesPIDsAssociation) != 0 {
 		toOmit = toOmit + len(processesPIDsAssociation)
 	}
 	for omitCounter := 0; omitCounter < toOmit; omitCounter++ {
@@ -333,13 +317,13 @@ func (r *IntelRDT) processOutput(cmdReader io.ReadCloser, processesPIDsAssociati
 		if len(r.Processes) != 0 {
 			newMetric := processMeasurement{}
 
-			pids, err := findPIDsInMeasurement(out)
+			PIDs, err := findPIDsInMeasurement(out)
 			if err != nil {
 				r.errorChan <- err
 				break
 			}
 			for processName, PIDsProcess := range processesPIDsAssociation {
-				if pids == PIDsProcess {
+				if PIDs == PIDsProcess {
 					newMetric.name = processName
 					newMetric.measurement = out
 				}
@@ -352,29 +336,13 @@ func (r *IntelRDT) processOutput(cmdReader io.ReadCloser, processesPIDsAssociati
 }
 
 func shutDownPqos(pqos *exec.Cmd) error {
-	timeout := time.Second * 2
-
 	if pqos.Process != nil {
-		// try to send interrupt signal, ignore err for now
-		_ = pqos.Process.Signal(os.Interrupt)
-
-		// wait and constantly check if pqos is still running
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		for {
-			if err := pqos.Process.Signal(syscall.Signal(0)); err == os.ErrProcessDone {
-				return nil
-			} else if ctx.Err() != nil {
-				break
-			}
-		}
-
-		// if pqos is still running after some period, try to kill it
-		// this will send SIGTERM to pqos, and leave garbage in `/sys/fs/resctrl/mon_groups`
-		// fixed in https://github.com/intel/intel-cmt-cat/issues/197
-		err := pqos.Process.Kill()
+		err := pqos.Process.Signal(os.Interrupt)
 		if err != nil {
-			return fmt.Errorf("failed to shut down pqos: %v", err)
+			err = pqos.Process.Kill()
+			if err != nil {
+				return fmt.Errorf("failed to shut down pqos: %v", err)
+			}
 		}
 	}
 	return nil
@@ -488,29 +456,29 @@ func validateAndParseCores(coreStr string) ([]int, error) {
 func findPIDsInMeasurement(measurements string) (string, error) {
 	// to distinguish PIDs from Cores (PIDs should be in quotes)
 	var insideQuoteRegex = regexp.MustCompile(`"(.*?)"`)
-	pidsMatch := insideQuoteRegex.FindStringSubmatch(measurements)
-	if len(pidsMatch) < 2 {
+	PIDsMatch := insideQuoteRegex.FindStringSubmatch(measurements)
+	if len(PIDsMatch) < 2 {
 		return "", fmt.Errorf("cannot find PIDs in measurement line")
 	}
-	pids := pidsMatch[1]
-	return pids, nil
+	PIDs := PIDsMatch[1]
+	return PIDs, nil
 }
 
-func splitCSVLineIntoValues(line string) (splitCSVLine, error) {
+func splitCSVLineIntoValues(line string) (timeValue string, metricsValues, coreOrPIDsValues []string, err error) {
 	values, err := splitMeasurementLine(line)
 	if err != nil {
-		return splitCSVLine{}, err
+		return "", nil, nil, err
 	}
 
-	timeValue := values[0]
+	timeValue = values[0]
 	// Because pqos csv format is broken when many cores are involved in PID or
 	// group of PIDs, there is need to work around it. E.g.:
 	// Time,PID,Core,IPC,LLC Misses,LLC[KB],MBL[MB/s],MBR[MB/s],MBT[MB/s]
 	// 2020-08-12 13:34:36,"45417,29170,",37,44,0.00,0,0.0,0.0,0.0,0.0
-	metricsValues := values[len(values)-numberOfMetrics:]
-	coreOrPIDsValues := values[1 : len(values)-numberOfMetrics]
+	metricsValues = values[len(values)-numberOfMetrics:]
+	coreOrPIDsValues = values[1 : len(values)-numberOfMetrics]
 
-	return splitCSVLine{timeValue, metricsValues, coreOrPIDsValues}, nil
+	return timeValue, metricsValues, coreOrPIDsValues, nil
 }
 
 func validateInterval(interval int32) error {
@@ -529,7 +497,7 @@ func splitMeasurementLine(line string) ([]string, error) {
 }
 
 func parseTime(value string) (time.Time, error) {
-	timestamp, err := time.ParseInLocation(timestampFormat, value, time.Local)
+	timestamp, err := time.Parse(timestampFormat, value)
 	if err != nil {
 		return time.Time{}, err
 	}

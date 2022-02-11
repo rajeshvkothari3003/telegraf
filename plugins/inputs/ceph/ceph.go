@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io/ioutil"
+	"log"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -27,19 +28,17 @@ const (
 )
 
 type Ceph struct {
-	CephBinary             string `toml:"ceph_binary"`
-	OsdPrefix              string `toml:"osd_prefix"`
-	MonPrefix              string `toml:"mon_prefix"`
-	MdsPrefix              string `toml:"mds_prefix"`
-	RgwPrefix              string `toml:"rgw_prefix"`
-	SocketDir              string `toml:"socket_dir"`
-	SocketSuffix           string `toml:"socket_suffix"`
-	CephUser               string `toml:"ceph_user"`
-	CephConfig             string `toml:"ceph_config"`
-	GatherAdminSocketStats bool   `toml:"gather_admin_socket_stats"`
-	GatherClusterStats     bool   `toml:"gather_cluster_stats"`
-
-	Log telegraf.Logger `toml:"-"`
+	CephBinary             string
+	OsdPrefix              string
+	MonPrefix              string
+	MdsPrefix              string
+	RgwPrefix              string
+	SocketDir              string
+	SocketSuffix           string
+	CephUser               string
+	CephConfig             string
+	GatherAdminSocketStats bool
+	GatherClusterStats     bool
 }
 
 func (c *Ceph) Description() string {
@@ -68,14 +67,7 @@ var sampleConfig = `
   ## suffix used to identify socket files
   socket_suffix = "asok"
 
-  ## Ceph user to authenticate as, ceph will search for the corresponding keyring
-  ## e.g. client.admin.keyring in /etc/ceph, or the explicit path defined in the
-  ## client section of ceph.conf for example:
-  ##
-  ##     [client.telegraf]
-  ##         keyring = /etc/ceph/client.telegraf.keyring
-  ##
-  ## Consult the ceph documentation for more detail on keyring generation.
+  ## Ceph user to authenticate as
   ceph_user = "client.admin"
 
   ## Ceph configuration to use to locate the cluster
@@ -84,8 +76,7 @@ var sampleConfig = `
   ## Whether to gather statistics via the admin socket
   gather_admin_socket_stats = true
 
-  ## Whether to gather statistics via ceph commands, requires ceph_user and ceph_config
-  ## to be specified
+  ## Whether to gather statistics via ceph commands
   gather_cluster_stats = false
 `
 
@@ -121,14 +112,14 @@ func (c *Ceph) gatherAdminSocketStats(acc telegraf.Accumulator) error {
 			acc.AddError(fmt.Errorf("error reading from socket '%s': %v", s.socket, err))
 			continue
 		}
-		data, err := c.parseDump(dump)
+		data, err := parseDump(dump)
 		if err != nil {
 			acc.AddError(fmt.Errorf("error parsing dump from socket '%s': %v", s.socket, err))
 			continue
 		}
 		for tag, metrics := range data {
 			acc.AddFields(measurement,
-				metrics,
+				map[string]interface{}(metrics),
 				map[string]string{"type": s.sockType, "id": s.sockID, "collection": tag})
 		}
 	}
@@ -147,7 +138,7 @@ func (c *Ceph) gatherClusterStats(acc telegraf.Accumulator) error {
 
 	// For each job, execute against the cluster, parse and accumulate the data points
 	for _, job := range jobs {
-		output, err := c.execute(job.command)
+		output, err := c.exec(job.command)
 		if err != nil {
 			return fmt.Errorf("error executing command: %v", err)
 		}
@@ -180,17 +171,15 @@ func init() {
 
 var perfDump = func(binary string, socket *socket) (string, error) {
 	cmdArgs := []string{"--admin-daemon", socket.socket}
-
-	switch socket.sockType {
-	case typeOsd:
+	if socket.sockType == typeOsd {
 		cmdArgs = append(cmdArgs, "perf", "dump")
-	case typeMon:
+	} else if socket.sockType == typeMon {
 		cmdArgs = append(cmdArgs, "perfcounters_dump")
-	case typeMds:
+	} else if socket.sockType == typeMds {
 		cmdArgs = append(cmdArgs, "perf", "dump")
-	case typeRgw:
+	} else if socket.sockType == typeRgw {
 		cmdArgs = append(cmdArgs, "perf", "dump")
-	default:
+	} else {
 		return "", fmt.Errorf("ignoring unknown socket type: %s", socket.sockType)
 	}
 
@@ -206,7 +195,7 @@ var perfDump = func(binary string, socket *socket) (string, error) {
 }
 
 var findSockets = func(c *Ceph) ([]*socket, error) {
-	listing, err := os.ReadDir(c.SocketDir)
+	listing, err := ioutil.ReadDir(c.SocketDir)
 	if err != nil {
 		return []*socket{}, fmt.Errorf("Failed to read socket directory '%s': %v", c.SocketDir, err)
 	}
@@ -222,14 +211,17 @@ var findSockets = func(c *Ceph) ([]*socket, error) {
 		if strings.HasPrefix(f, c.OsdPrefix) {
 			sockType = typeOsd
 			sockPrefix = osdPrefix
+
 		}
 		if strings.HasPrefix(f, c.MdsPrefix) {
 			sockType = typeMds
 			sockPrefix = mdsPrefix
+
 		}
 		if strings.HasPrefix(f, c.RgwPrefix) {
 			sockType = typeRgw
 			sockPrefix = rgwPrefix
+
 		}
 
 		if sockType == typeOsd || sockType == typeMon || sockType == typeMds || sockType == typeRgw {
@@ -264,10 +256,8 @@ func (m *metric) name() string {
 	buf := bytes.Buffer{}
 	for i := len(m.pathStack) - 1; i >= 0; i-- {
 		if buf.Len() > 0 {
-			//nolint:errcheck,revive // should never return an error
 			buf.WriteString(".")
 		}
-		//nolint:errcheck,revive // should never return an error
 		buf.WriteString(m.pathStack[i])
 	}
 	return buf.String()
@@ -279,23 +269,23 @@ type taggedMetricMap map[string]metricMap
 
 // Parses a raw JSON string into a taggedMetricMap
 // Delegates the actual parsing to newTaggedMetricMap(..)
-func (c *Ceph) parseDump(dump string) (taggedMetricMap, error) {
+func parseDump(dump string) (taggedMetricMap, error) {
 	data := make(map[string]interface{})
 	err := json.Unmarshal([]byte(dump), &data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse json: '%s': %v", dump, err)
 	}
 
-	return c.newTaggedMetricMap(data), nil
+	return newTaggedMetricMap(data), nil
 }
 
 // Builds a TaggedMetricMap out of a generic string map.
 // The top-level key is used as a tag and all sub-keys are flattened into metrics
-func (c *Ceph) newTaggedMetricMap(data map[string]interface{}) taggedMetricMap {
+func newTaggedMetricMap(data map[string]interface{}) taggedMetricMap {
 	tmm := make(taggedMetricMap)
 	for tag, datapoints := range data {
 		mm := make(metricMap)
-		for _, m := range c.flatten(datapoints) {
+		for _, m := range flatten(datapoints) {
 			mm[m.name()] = m.value
 		}
 		tmm[tag] = mm
@@ -307,7 +297,7 @@ func (c *Ceph) newTaggedMetricMap(data map[string]interface{}) taggedMetricMap {
 // Nested keys are flattened into ordered slices associated with a metric value.
 // The key slices are treated as stacks, and are expected to be reversed and concatenated
 // when passed as metrics to the accumulator. (see (*metric).name())
-func (c *Ceph) flatten(data interface{}) []*metric {
+func flatten(data interface{}) []*metric {
 	var metrics []*metric
 
 	switch val := data.(type) {
@@ -316,20 +306,20 @@ func (c *Ceph) flatten(data interface{}) []*metric {
 	case map[string]interface{}:
 		metrics = make([]*metric, 0, len(val))
 		for k, v := range val {
-			for _, m := range c.flatten(v) {
+			for _, m := range flatten(v) {
 				m.pathStack = append(m.pathStack, k)
 				metrics = append(metrics, m)
 			}
 		}
 	default:
-		c.Log.Infof("ignoring unexpected type '%T' for value %v", val, val)
+		log.Printf("I! [inputs.ceph] ignoring unexpected type '%T' for value %v", val, val)
 	}
 
 	return metrics
 }
 
-// execute executes the 'ceph' command with the supplied arguments, returning JSON formatted output
-func (c *Ceph) execute(command string) (string, error) {
+// exec executes the 'ceph' command with the supplied arguments, returning JSON formatted output
+func (c *Ceph) exec(command string) (string, error) {
 	cmdArgs := []string{"--conf", c.CephConfig, "--name", c.CephUser, "--format", "json"}
 	cmdArgs = append(cmdArgs, strings.Split(command, " ")...)
 

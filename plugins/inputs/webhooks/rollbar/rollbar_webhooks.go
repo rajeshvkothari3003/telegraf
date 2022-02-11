@@ -3,31 +3,29 @@ package rollbar
 import (
 	"encoding/json"
 	"errors"
-	"io"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/mux"
-
 	"github.com/influxdata/telegraf"
 )
 
 type RollbarWebhook struct {
 	Path string
 	acc  telegraf.Accumulator
-	log  telegraf.Logger
 }
 
-func (rb *RollbarWebhook) Register(router *mux.Router, acc telegraf.Accumulator, log telegraf.Logger) {
+func (rb *RollbarWebhook) Register(router *mux.Router, acc telegraf.Accumulator) {
 	router.HandleFunc(rb.Path, rb.eventHandler).Methods("POST")
-	rb.log = log
-	rb.log.Infof("Started the webhooks_rollbar on %s", rb.Path)
+	log.Printf("I! Started the webhooks_rollbar on %s\n", rb.Path)
 	rb.acc = acc
 }
 
 func (rb *RollbarWebhook) eventHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	data, err := io.ReadAll(r.Body)
+	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return

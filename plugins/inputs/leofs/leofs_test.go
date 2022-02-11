@@ -1,13 +1,15 @@
 package leofs
 
 import (
+	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"runtime"
 	"testing"
-
-	"github.com/influxdata/telegraf/testutil"
-	"github.com/stretchr/testify/require"
 )
 
 var fakeSNMP4Manager = `
@@ -123,6 +125,22 @@ func main() {
 }
 `
 
+func makeFakeSNMPSrc(code string) string {
+	path := os.TempDir() + "/test.go"
+	err := ioutil.WriteFile(path, []byte(code), 0600)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return path
+}
+
+func buildFakeSNMPCmd(src string, executable string) {
+	err := exec.Command("go", "build", "-o", executable, src).Run()
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
 func testMain(t *testing.T, code string, endpoint string, serverType ServerType) {
 	executable := "snmpwalk"
 	if runtime.GOOS == "windows" {
@@ -130,16 +148,14 @@ func testMain(t *testing.T, code string, endpoint string, serverType ServerType)
 	}
 
 	// Build the fake snmpwalk for test
-	src := os.TempDir() + "/test.go"
-	require.NoError(t, os.WriteFile(src, []byte(code), 0600))
+	src := makeFakeSNMPSrc(code)
 	defer os.Remove(src)
-
-	require.NoError(t, exec.Command("go", "build", "-o", executable, src).Run())
+	buildFakeSNMPCmd(src, executable)
 	defer os.Remove("./" + executable)
 
 	envPathOrigin := os.Getenv("PATH")
 	// Refer to the fake snmpwalk
-	require.NoError(t, os.Setenv("PATH", "."))
+	os.Setenv("PATH", ".")
 	defer os.Setenv("PATH", envPathOrigin)
 
 	l := &LeoFS{
@@ -155,7 +171,7 @@ func testMain(t *testing.T, code string, endpoint string, serverType ServerType)
 	floatMetrics := KeyMapping[serverType]
 
 	for _, metric := range floatMetrics {
-		require.True(t, acc.HasFloatField("leofs", metric), metric)
+		assert.True(t, acc.HasFloatField("leofs", metric), metric)
 	}
 }
 

@@ -9,13 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/streadway/amqp"
-
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/common/tls"
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"github.com/influxdata/telegraf/plugins/parsers"
+	"github.com/streadway/amqp"
 )
 
 const (
@@ -27,7 +26,7 @@ type semaphore chan empty
 
 // AMQPConsumer is the top level struct for this plugin
 type AMQPConsumer struct {
-	URL                    string            `toml:"url" deprecated:"1.7.0;use brokers"`
+	URL                    string            `toml:"url"` // deprecated in 1.7; use brokers
 	Brokers                []string          `toml:"brokers"`
 	Username               string            `toml:"username"`
 	Password               string            `toml:"password"`
@@ -72,7 +71,7 @@ func (a *externalAuth) Mechanism() string {
 	return "EXTERNAL"
 }
 func (a *externalAuth) Response() string {
-	return "\000"
+	return fmt.Sprintf("\000")
 }
 
 const (
@@ -184,7 +183,7 @@ func (a *AMQPConsumer) Gather(_ telegraf.Accumulator) error {
 
 func (a *AMQPConsumer) createConfig() (*amqp.Config, error) {
 	// make new tls config
-	tlsCfg, err := a.ClientConfig.TLSConfig()
+	tls, err := a.ClientConfig.TLSConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +201,7 @@ func (a *AMQPConsumer) createConfig() (*amqp.Config, error) {
 	}
 
 	config := amqp.Config{
-		TLSClientConfig: tlsCfg,
+		TLSClientConfig: tls,
 		SASL:            auth, // if nil, it will be PLAIN
 	}
 	return &config, nil
@@ -289,13 +288,16 @@ func (a *AMQPConsumer) connect(amqpConf *amqp.Config) (<-chan amqp.Delivery, err
 
 	ch, err := a.conn.Channel()
 	if err != nil {
-		return nil, fmt.Errorf("failed to open a channel: %s", err.Error())
+		return nil, fmt.Errorf("Failed to open a channel: %s", err.Error())
 	}
 
 	if a.Exchange != "" {
-		exchangeDurable := true
-		if a.ExchangeDurability == "transient" {
+		var exchangeDurable = true
+		switch a.ExchangeDurability {
+		case "transient":
 			exchangeDurable = false
+		default:
+			exchangeDurable = true
 		}
 
 		exchangeArgs := make(amqp.Table, len(a.ExchangeArguments))
@@ -303,8 +305,11 @@ func (a *AMQPConsumer) connect(amqpConf *amqp.Config) (<-chan amqp.Delivery, err
 			exchangeArgs[k] = v
 		}
 
-		err = a.declareExchange(
+		err = declareExchange(
 			ch,
+			a.Exchange,
+			a.ExchangeType,
+			a.ExchangePassive,
 			exchangeDurable,
 			exchangeArgs)
 		if err != nil {
@@ -312,7 +317,11 @@ func (a *AMQPConsumer) connect(amqpConf *amqp.Config) (<-chan amqp.Delivery, err
 		}
 	}
 
-	q, err := a.declareQueue(ch)
+	q, err := declareQueue(
+		ch,
+		a.Queue,
+		a.QueueDurability,
+		a.QueuePassive)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +335,7 @@ func (a *AMQPConsumer) connect(amqpConf *amqp.Config) (<-chan amqp.Delivery, err
 			nil,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to bind a queue: %s", err)
+			return nil, fmt.Errorf("Failed to bind a queue: %s", err)
 		}
 	}
 
@@ -336,7 +345,7 @@ func (a *AMQPConsumer) connect(amqpConf *amqp.Config) (<-chan amqp.Delivery, err
 		false, // global
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to set QoS: %s", err)
+		return nil, fmt.Errorf("Failed to set QoS: %s", err)
 	}
 
 	msgs, err := ch.Consume(
@@ -349,22 +358,25 @@ func (a *AMQPConsumer) connect(amqpConf *amqp.Config) (<-chan amqp.Delivery, err
 		nil,    // arguments
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed establishing connection to queue: %s", err)
+		return nil, fmt.Errorf("Failed establishing connection to queue: %s", err)
 	}
 
 	return msgs, err
 }
 
-func (a *AMQPConsumer) declareExchange(
+func declareExchange(
 	channel *amqp.Channel,
+	exchangeName string,
+	exchangeType string,
+	exchangePassive bool,
 	exchangeDurable bool,
 	exchangeArguments amqp.Table,
 ) error {
 	var err error
-	if a.ExchangePassive {
+	if exchangePassive {
 		err = channel.ExchangeDeclarePassive(
-			a.Exchange,
-			a.ExchangeType,
+			exchangeName,
+			exchangeType,
 			exchangeDurable,
 			false, // delete when unused
 			false, // internal
@@ -373,8 +385,8 @@ func (a *AMQPConsumer) declareExchange(
 		)
 	} else {
 		err = channel.ExchangeDeclare(
-			a.Exchange,
-			a.ExchangeType,
+			exchangeName,
+			exchangeType,
 			exchangeDurable,
 			false, // delete when unused
 			false, // internal
@@ -383,23 +395,31 @@ func (a *AMQPConsumer) declareExchange(
 		)
 	}
 	if err != nil {
-		return fmt.Errorf("error declaring exchange: %v", err)
+		return fmt.Errorf("Error declaring exchange: %v", err)
 	}
 	return nil
 }
 
-func (a *AMQPConsumer) declareQueue(channel *amqp.Channel) (*amqp.Queue, error) {
+func declareQueue(
+	channel *amqp.Channel,
+	queueName string,
+	queueDurability string,
+	queuePassive bool,
+) (*amqp.Queue, error) {
 	var queue amqp.Queue
 	var err error
 
-	queueDurable := true
-	if a.QueueDurability == "transient" {
+	var queueDurable = true
+	switch queueDurability {
+	case "transient":
 		queueDurable = false
+	default:
+		queueDurable = true
 	}
 
-	if a.QueuePassive {
+	if queuePassive {
 		queue, err = channel.QueueDeclarePassive(
-			a.Queue,      // queue
+			queueName,    // queue
 			queueDurable, // durable
 			false,        // delete when unused
 			false,        // exclusive
@@ -408,7 +428,7 @@ func (a *AMQPConsumer) declareQueue(channel *amqp.Channel) (*amqp.Queue, error) 
 		)
 	} else {
 		queue, err = channel.QueueDeclare(
-			a.Queue,      // queue
+			queueName,    // queue
 			queueDurable, // durable
 			false,        // delete when unused
 			false,        // exclusive
@@ -417,7 +437,7 @@ func (a *AMQPConsumer) declareQueue(channel *amqp.Channel) (*amqp.Queue, error) 
 		)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("error declaring queue: %v", err)
+		return nil, fmt.Errorf("Error declaring queue: %v", err)
 	}
 	return &queue, nil
 }

@@ -2,7 +2,7 @@ package internal
 
 import (
 	"bytes"
-	"io"
+	"io/ioutil"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -46,21 +46,6 @@ func TestGzipReuse(t *testing.T) {
 	require.Equal(t, "doody", string(actual))
 }
 
-func TestZlibEncodeDecode(t *testing.T) {
-	enc, err := NewZlibEncoder()
-	require.NoError(t, err)
-	dec, err := NewZlibDecoder()
-	require.NoError(t, err)
-
-	payload, err := enc.Encode([]byte("howdy"))
-	require.NoError(t, err)
-
-	actual, err := dec.Decode(payload)
-	require.NoError(t, err)
-
-	require.Equal(t, "howdy", string(actual))
-}
-
 func TestIdentityEncodeDecode(t *testing.T) {
 	enc := NewIdentityEncoder()
 	dec := NewIdentityDecoder()
@@ -83,7 +68,7 @@ func TestStreamIdentityDecode(t *testing.T) {
 	dec, err := NewStreamContentDecoder("identity", &r)
 	require.NoError(t, err)
 
-	data, err := io.ReadAll(dec)
+	data, err := ioutil.ReadAll(dec)
 	require.NoError(t, err)
 
 	require.Equal(t, []byte("howdy"), data)

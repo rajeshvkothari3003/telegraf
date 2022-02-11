@@ -34,7 +34,10 @@ func makeMetrics(p *V5Format) ([]telegraf.Metric, error) {
 				for k, v := range fields {
 					fields2[k] = v
 				}
-				m := metric.New("sflow", tags2, fields2, now)
+				m, err := metric.New("sflow", tags2, fields2, now)
+				if err != nil {
+					return nil, err
+				}
 				metrics = append(metrics, m)
 			}
 		}

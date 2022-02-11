@@ -2,6 +2,7 @@ package nstat
 
 import (
 	"bytes"
+	"io/ioutil"
 	"os"
 	"strconv"
 
@@ -61,53 +62,74 @@ func (ns *Nstat) Gather(acc telegraf.Accumulator) error {
 	// load paths, get from env if config values are empty
 	ns.loadPaths()
 
-	netstat, err := os.ReadFile(ns.ProcNetNetstat)
+	netstat, err := ioutil.ReadFile(ns.ProcNetNetstat)
 	if err != nil {
 		return err
 	}
 
 	// collect netstat data
-	ns.gatherNetstat(netstat, acc)
-
-	// collect SNMP data
-	snmp, err := os.ReadFile(ns.ProcNetSNMP)
+	err = ns.gatherNetstat(netstat, acc)
 	if err != nil {
 		return err
 	}
-	ns.gatherSNMP(snmp, acc)
+
+	// collect SNMP data
+	snmp, err := ioutil.ReadFile(ns.ProcNetSNMP)
+	if err != nil {
+		return err
+	}
+	err = ns.gatherSNMP(snmp, acc)
+	if err != nil {
+		return err
+	}
 
 	// collect SNMP6 data, if SNMP6 directory exists (IPv6 enabled)
-	snmp6, err := os.ReadFile(ns.ProcNetSNMP6)
+	snmp6, err := ioutil.ReadFile(ns.ProcNetSNMP6)
 	if err == nil {
-		ns.gatherSNMP6(snmp6, acc)
+		err = ns.gatherSNMP6(snmp6, acc)
+		if err != nil {
+			return err
+		}
 	} else if !os.IsNotExist(err) {
 		return err
 	}
 	return nil
 }
 
-func (ns *Nstat) gatherNetstat(data []byte, acc telegraf.Accumulator) {
-	metrics := ns.loadUglyTable(data)
+func (ns *Nstat) gatherNetstat(data []byte, acc telegraf.Accumulator) error {
+	metrics, err := loadUglyTable(data, ns.DumpZeros)
+	if err != nil {
+		return err
+	}
 	tags := map[string]string{
 		"name": "netstat",
 	}
 	acc.AddFields("nstat", metrics, tags)
+	return nil
 }
 
-func (ns *Nstat) gatherSNMP(data []byte, acc telegraf.Accumulator) {
-	metrics := ns.loadUglyTable(data)
+func (ns *Nstat) gatherSNMP(data []byte, acc telegraf.Accumulator) error {
+	metrics, err := loadUglyTable(data, ns.DumpZeros)
+	if err != nil {
+		return err
+	}
 	tags := map[string]string{
 		"name": "snmp",
 	}
 	acc.AddFields("nstat", metrics, tags)
+	return nil
 }
 
-func (ns *Nstat) gatherSNMP6(data []byte, acc telegraf.Accumulator) {
-	metrics := ns.loadGoodTable(data)
+func (ns *Nstat) gatherSNMP6(data []byte, acc telegraf.Accumulator) error {
+	metrics, err := loadGoodTable(data, ns.DumpZeros)
+	if err != nil {
+		return err
+	}
 	tags := map[string]string{
 		"name": "snmp6",
 	}
 	acc.AddFields("nstat", metrics, tags)
+	return nil
 }
 
 // loadPaths can be used to read paths firstly from config
@@ -126,7 +148,7 @@ func (ns *Nstat) loadPaths() {
 
 // loadGoodTable can be used to parse string heap that
 // headers and values are arranged in right order
-func (ns *Nstat) loadGoodTable(table []byte) map[string]interface{} {
+func loadGoodTable(table []byte, dumpZeros bool) (map[string]interface{}, error) {
 	entries := map[string]interface{}{}
 	fields := bytes.Fields(table)
 	var value int64
@@ -136,12 +158,12 @@ func (ns *Nstat) loadGoodTable(table []byte) map[string]interface{} {
 	for i := 0; i < len(fields); i = i + 2 {
 		// counter is zero
 		if bytes.Equal(fields[i+1], zeroByte) {
-			if !ns.DumpZeros {
+			if !dumpZeros {
+				continue
+			} else {
+				entries[string(fields[i])] = int64(0)
 				continue
 			}
-
-			entries[string(fields[i])] = int64(0)
-			continue
 		}
 		// the counter is not zero, so parse it.
 		value, err = strconv.ParseInt(string(fields[i+1]), 10, 64)
@@ -149,12 +171,12 @@ func (ns *Nstat) loadGoodTable(table []byte) map[string]interface{} {
 			entries[string(fields[i])] = value
 		}
 	}
-	return entries
+	return entries, nil
 }
 
 // loadUglyTable can be used to parse string heap that
 // the headers and values are splitted with a newline
-func (ns *Nstat) loadUglyTable(table []byte) map[string]interface{} {
+func loadUglyTable(table []byte, dumpZeros bool) (map[string]interface{}, error) {
 	entries := map[string]interface{}{}
 	// split the lines by newline
 	lines := bytes.Split(table, newLineByte)
@@ -174,12 +196,12 @@ func (ns *Nstat) loadUglyTable(table []byte) map[string]interface{} {
 		for j := 1; j < len(headers); j++ {
 			// counter is zero
 			if bytes.Equal(metrics[j], zeroByte) {
-				if !ns.DumpZeros {
+				if !dumpZeros {
+					continue
+				} else {
+					entries[string(append(prefix, headers[j]...))] = int64(0)
 					continue
 				}
-
-				entries[string(append(prefix, headers[j]...))] = int64(0)
-				continue
 			}
 			// the counter is not zero, so parse it.
 			value, err = strconv.ParseInt(string(metrics[j]), 10, 64)
@@ -188,7 +210,7 @@ func (ns *Nstat) loadUglyTable(table []byte) map[string]interface{} {
 			}
 		}
 	}
-	return entries
+	return entries, nil
 }
 
 // proc can be used to read file paths from env

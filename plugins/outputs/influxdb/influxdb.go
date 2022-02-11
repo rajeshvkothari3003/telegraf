@@ -1,4 +1,3 @@
-//nolint
 package influxdb
 
 import (
@@ -10,7 +9,7 @@ import (
 	"time"
 
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/common/tls"
 	"github.com/influxdata/telegraf/plugins/outputs"
 	"github.com/influxdata/telegraf/plugins/serializers/influx"
@@ -44,8 +43,8 @@ type InfluxDB struct {
 	ExcludeRetentionPolicyTag bool              `toml:"exclude_retention_policy_tag"`
 	UserAgent                 string            `toml:"user_agent"`
 	WriteConsistency          string            `toml:"write_consistency"`
-	Timeout                   config.Duration   `toml:"timeout"`
-	UDPPayload                config.Size       `toml:"udp_payload"`
+	Timeout                   internal.Duration `toml:"timeout"`
+	UDPPayload                internal.Size     `toml:"udp_payload"`
 	HTTPProxy                 string            `toml:"http_proxy"`
 	HTTPHeaders               map[string]string `toml:"http_headers"`
 	ContentEncoding           string            `toml:"content_encoding"`
@@ -211,7 +210,6 @@ func (i *InfluxDB) SampleConfig() string {
 func (i *InfluxDB) Write(metrics []telegraf.Metric) error {
 	ctx := context.Background()
 
-	allErrorsAreDatabaseNotFoundErrors := true
 	var err error
 	p := rand.Perm(len(i.clients))
 	for _, n := range p {
@@ -221,38 +219,27 @@ func (i *InfluxDB) Write(metrics []telegraf.Metric) error {
 			return nil
 		}
 
-		i.Log.Errorf("When writing to [%s]: %v", client.URL(), err)
-
 		switch apiError := err.(type) {
 		case *DatabaseNotFoundError:
-			if i.SkipDatabaseCreation {
-				continue
+			if !i.SkipDatabaseCreation {
+				err := client.CreateDatabase(ctx, apiError.Database)
+				if err != nil {
+					i.Log.Errorf("When writing to [%s]: database %q not found and failed to recreate",
+						client.URL(), apiError.Database)
+				}
 			}
-			// retry control
-			// error so the write is retried
-			err := client.CreateDatabase(ctx, apiError.Database)
-			if err != nil {
-				i.Log.Errorf("When writing to [%s]: database %q not found and failed to recreate",
-					client.URL(), apiError.Database)
-			} else {
-				return errors.New("database created; retry write")
-			}
-		default:
-			allErrorsAreDatabaseNotFoundErrors = false
 		}
+
+		i.Log.Errorf("When writing to [%s]: %v", client.URL(), err)
 	}
 
-	if allErrorsAreDatabaseNotFoundErrors {
-		// return nil because we should not be retrying this
-		return nil
-	}
 	return errors.New("could not write any address")
 }
 
 func (i *InfluxDB) udpClient(url *url.URL) (Client, error) {
 	config := &UDPConfig{
 		URL:            url,
-		MaxPayloadSize: int(i.UDPPayload),
+		MaxPayloadSize: int(i.UDPPayload.Size),
 		Serializer:     i.newSerializer(),
 		Log:            i.Log,
 	}
@@ -273,7 +260,7 @@ func (i *InfluxDB) httpClient(ctx context.Context, url *url.URL, proxy *url.URL)
 
 	config := &HTTPConfig{
 		URL:                       url,
-		Timeout:                   time.Duration(i.Timeout),
+		Timeout:                   i.Timeout.Duration,
 		TLSConfig:                 tlsConfig,
 		UserAgent:                 i.UserAgent,
 		Username:                  i.Username,
@@ -321,7 +308,7 @@ func (i *InfluxDB) newSerializer() *influx.Serializer {
 func init() {
 	outputs.Add("influxdb", func() telegraf.Output {
 		return &InfluxDB{
-			Timeout: config.Duration(time.Second * 5),
+			Timeout: internal.Duration{Duration: time.Second * 5},
 			CreateHTTPClientF: func(config *HTTPConfig) (Client, error) {
 				return NewHTTPClient(*config)
 			},

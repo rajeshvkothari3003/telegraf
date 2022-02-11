@@ -19,7 +19,6 @@ func TestConnectAndWriteIntegration(t *testing.T) {
 	m := &MQTT{
 		Servers:    []string{url},
 		serializer: s,
-		KeepAlive:  30,
 	}
 
 	// Verify that we can connect to the MQTT broker

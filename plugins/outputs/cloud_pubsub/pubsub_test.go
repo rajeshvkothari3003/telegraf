@@ -1,18 +1,20 @@
 package cloud_pubsub
 
 import (
-	"encoding/base64"
 	"testing"
 
+	"encoding/base64"
+
 	"cloud.google.com/go/pubsub"
-	"github.com/stretchr/testify/require"
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/plugins/parsers"
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPubSub_WriteSingle(t *testing.T) {
+
 	testMetrics := []testMetric{
 		{testutil.TestMetric("value_1", "test"), false /*return error */},
 	}
@@ -50,8 +52,8 @@ func TestPubSub_WriteWithAttribute(t *testing.T) {
 
 	for _, testM := range testMetrics {
 		msg := verifyRawMetricPublished(t, testM.m, topic.published)
-		require.Equalf(t, "bar1", msg.Attributes["foo1"], "expected attribute foo1=bar1")
-		require.Equalf(t, "bar2", msg.Attributes["foo2"], "expected attribute foo2=bar2")
+		assert.Equalf(t, "bar1", msg.Attributes["foo1"], "expected attribute foo1=bar1")
+		assert.Equalf(t, "bar2", msg.Attributes["foo2"], "expected attribute foo2=bar2")
 	}
 }
 
@@ -73,7 +75,7 @@ func TestPubSub_WriteMultiple(t *testing.T) {
 	for _, testM := range testMetrics {
 		verifyRawMetricPublished(t, testM.m, topic.published)
 	}
-	require.Equalf(t, 1, topic.getBundleCount(), "unexpected bundle count")
+	assert.Equalf(t, 1, topic.getBundleCount(), "unexpected bundle count")
 }
 
 func TestPubSub_WriteOverCountThreshold(t *testing.T) {
@@ -97,7 +99,7 @@ func TestPubSub_WriteOverCountThreshold(t *testing.T) {
 	for _, testM := range testMetrics {
 		verifyRawMetricPublished(t, testM.m, topic.published)
 	}
-	require.Equalf(t, 2, topic.getBundleCount(), "unexpected bundle count")
+	assert.Equalf(t, 2, topic.getBundleCount(), "unexpected bundle count")
 }
 
 func TestPubSub_WriteOverByteThreshold(t *testing.T) {
@@ -120,10 +122,11 @@ func TestPubSub_WriteOverByteThreshold(t *testing.T) {
 	for _, testM := range testMetrics {
 		verifyRawMetricPublished(t, testM.m, topic.published)
 	}
-	require.Equalf(t, 2, topic.getBundleCount(), "unexpected bundle count")
+	assert.Equalf(t, 2, topic.getBundleCount(), "unexpected bundle count")
 }
 
 func TestPubSub_WriteBase64Single(t *testing.T) {
+
 	testMetrics := []testMetric{
 		{testutil.TestMetric("value_1", "test"), false /*return error */},
 		{testutil.TestMetric("value_2", "test"), false},
@@ -182,7 +185,7 @@ func verifyMetricPublished(t *testing.T, m telegraf.Metric, published map[string
 		if err != nil {
 			t.Fatalf("Unable to decode expected base64-encoded message: %s", err)
 		}
-		data = v
+		data = []byte(v)
 	}
 
 	parsed, err := p.Parse(data)
@@ -197,7 +200,7 @@ func verifyMetricPublished(t *testing.T, m telegraf.Metric, published map[string
 	if !ok {
 		t.Fatalf("expected published metric to have a value")
 	}
-	require.Equal(t, v, publishedV, "incorrect published value")
+	assert.Equal(t, v, publishedV, "incorrect published value")
 
 	return psMsg
 }

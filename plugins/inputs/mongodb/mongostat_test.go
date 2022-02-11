@@ -2,11 +2,14 @@ package mongodb
 
 import (
 	"testing"
+	//"time"
 
-	"github.com/stretchr/testify/require"
+	//"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLatencyStats(t *testing.T) {
+
 	sl := NewStatLine(
 		MongoStatus{
 			ServerStatus: &ServerStatus{
@@ -53,15 +56,16 @@ func TestLatencyStats(t *testing.T) {
 		60,
 	)
 
-	require.Equal(t, sl.CommandLatency, int64(0))
-	require.Equal(t, sl.ReadLatency, int64(0))
-	require.Equal(t, sl.WriteLatency, int64(0))
-	require.Equal(t, sl.CommandOpsCnt, int64(0))
-	require.Equal(t, sl.ReadOpsCnt, int64(0))
-	require.Equal(t, sl.WriteOpsCnt, int64(0))
+	assert.Equal(t, sl.CommandLatency, int64(0))
+	assert.Equal(t, sl.ReadLatency, int64(0))
+	assert.Equal(t, sl.WriteLatency, int64(0))
+	assert.Equal(t, sl.CommandOpsCnt, int64(0))
+	assert.Equal(t, sl.ReadOpsCnt, int64(0))
+	assert.Equal(t, sl.WriteOpsCnt, int64(0))
 }
 
 func TestLatencyStatsDiffZero(t *testing.T) {
+
 	sl := NewStatLine(
 		MongoStatus{
 			ServerStatus: &ServerStatus{
@@ -122,15 +126,16 @@ func TestLatencyStatsDiffZero(t *testing.T) {
 		60,
 	)
 
-	require.Equal(t, sl.CommandLatency, int64(0))
-	require.Equal(t, sl.ReadLatency, int64(0))
-	require.Equal(t, sl.WriteLatency, int64(0))
-	require.Equal(t, sl.CommandOpsCnt, int64(0))
-	require.Equal(t, sl.ReadOpsCnt, int64(0))
-	require.Equal(t, sl.WriteOpsCnt, int64(0))
+	assert.Equal(t, sl.CommandLatency, int64(0))
+	assert.Equal(t, sl.ReadLatency, int64(0))
+	assert.Equal(t, sl.WriteLatency, int64(0))
+	assert.Equal(t, sl.CommandOpsCnt, int64(0))
+	assert.Equal(t, sl.ReadOpsCnt, int64(0))
+	assert.Equal(t, sl.WriteOpsCnt, int64(0))
 }
 
 func TestLatencyStatsDiff(t *testing.T) {
+
 	sl := NewStatLine(
 		MongoStatus{
 			ServerStatus: &ServerStatus{
@@ -191,10 +196,10 @@ func TestLatencyStatsDiff(t *testing.T) {
 		60,
 	)
 
-	require.Equal(t, sl.CommandLatency, int64(59177981552))
-	require.Equal(t, sl.ReadLatency, int64(2255946760057))
-	require.Equal(t, sl.WriteLatency, int64(494479456987))
-	require.Equal(t, sl.CommandOpsCnt, int64(1019152861))
-	require.Equal(t, sl.ReadOpsCnt, int64(4189049884))
-	require.Equal(t, sl.WriteOpsCnt, int64(1691021287))
+	assert.Equal(t, sl.CommandLatency, int64(59177981552))
+	assert.Equal(t, sl.ReadLatency, int64(2255946760057))
+	assert.Equal(t, sl.WriteLatency, int64(494479456987))
+	assert.Equal(t, sl.CommandOpsCnt, int64(1019152861))
+	assert.Equal(t, sl.ReadOpsCnt, int64(4189049884))
+	assert.Equal(t, sl.WriteOpsCnt, int64(1691021287))
 }

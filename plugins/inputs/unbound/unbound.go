@@ -12,28 +12,28 @@ import (
 	"time"
 
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
 	"github.com/influxdata/telegraf/filter"
 	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/inputs"
 )
 
-type runner func(unbound Unbound) (*bytes.Buffer, error)
+type runner func(cmdName string, Timeout internal.Duration, UseSudo bool, Server string, ThreadAsTag bool, ConfigFile string) (*bytes.Buffer, error)
 
 // Unbound is used to store configuration values
 type Unbound struct {
-	Binary      string          `toml:"binary"`
-	Timeout     config.Duration `toml:"timeout"`
-	UseSudo     bool            `toml:"use_sudo"`
-	Server      string          `toml:"server"`
-	ThreadAsTag bool            `toml:"thread_as_tag"`
-	ConfigFile  string          `toml:"config_file"`
+	Binary      string
+	Timeout     internal.Duration
+	UseSudo     bool
+	Server      string
+	ThreadAsTag bool
+	ConfigFile  string
 
-	run runner
+	filter filter.Filter
+	run    runner
 }
 
 var defaultBinary = "/usr/sbin/unbound-control"
-var defaultTimeout = config.Duration(time.Second)
+var defaultTimeout = internal.Duration{Duration: time.Second}
 
 var sampleConfig = `
   ## Address of server to connect to, read from unbound conf default, optionally ':port'
@@ -71,26 +71,26 @@ func (s *Unbound) SampleConfig() string {
 }
 
 // Shell out to unbound_stat and return the output
-func unboundRunner(unbound Unbound) (*bytes.Buffer, error) {
+func unboundRunner(cmdName string, Timeout internal.Duration, UseSudo bool, Server string, ThreadAsTag bool, ConfigFile string) (*bytes.Buffer, error) {
 	cmdArgs := []string{"stats_noreset"}
 
-	if unbound.Server != "" {
-		host, port, err := net.SplitHostPort(unbound.Server)
+	if Server != "" {
+		host, port, err := net.SplitHostPort(Server)
 		if err != nil { // No port was specified
-			host = unbound.Server
+			host = Server
 			port = ""
 		}
 
 		// Unbound control requires an IP address, and we want to be nice to the user
 		resolver := net.Resolver{}
-		ctx, lookUpCancel := context.WithTimeout(context.Background(), time.Duration(unbound.Timeout))
+		ctx, lookUpCancel := context.WithTimeout(context.Background(), Timeout.Duration)
 		defer lookUpCancel()
 		serverIps, err := resolver.LookupIPAddr(ctx, host)
 		if err != nil {
-			return nil, fmt.Errorf("error looking up ip for server: %s: %s", unbound.Server, err)
+			return nil, fmt.Errorf("error looking up ip for server: %s: %s", Server, err)
 		}
 		if len(serverIps) == 0 {
-			return nil, fmt.Errorf("error no ip for server: %s: %s", unbound.Server, err)
+			return nil, fmt.Errorf("error no ip for server: %s: %s", Server, err)
 		}
 		server := serverIps[0].IP.String()
 		if port != "" {
@@ -100,22 +100,22 @@ func unboundRunner(unbound Unbound) (*bytes.Buffer, error) {
 		cmdArgs = append([]string{"-s", server}, cmdArgs...)
 	}
 
-	if unbound.ConfigFile != "" {
-		cmdArgs = append([]string{"-c", unbound.ConfigFile}, cmdArgs...)
+	if ConfigFile != "" {
+		cmdArgs = append([]string{"-c", ConfigFile}, cmdArgs...)
 	}
 
-	cmd := exec.Command(unbound.Binary, cmdArgs...)
+	cmd := exec.Command(cmdName, cmdArgs...)
 
-	if unbound.UseSudo {
-		cmdArgs = append([]string{unbound.Binary}, cmdArgs...)
+	if UseSudo {
+		cmdArgs = append([]string{cmdName}, cmdArgs...)
 		cmd = exec.Command("sudo", cmdArgs...)
 	}
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	err := internal.RunTimeout(cmd, time.Duration(unbound.Timeout))
+	err := internal.RunTimeout(cmd, Timeout.Duration)
 	if err != nil {
-		return &out, fmt.Errorf("error running unbound-control: %s (%s %v)", err, unbound.Binary, cmdArgs)
+		return &out, fmt.Errorf("error running unbound-control: %s (%s %v)", err, cmdName, cmdArgs)
 	}
 
 	return &out, nil
@@ -125,6 +125,7 @@ func unboundRunner(unbound Unbound) (*bytes.Buffer, error) {
 //
 // All the dots in stat name will replaced by underscores. Histogram statistics will not be collected.
 func (s *Unbound) Gather(acc telegraf.Accumulator) error {
+
 	// Always exclude histogram statistics
 	statExcluded := []string{"histogram.*"}
 	filterExcluded, err := filter.Compile(statExcluded)
@@ -132,7 +133,7 @@ func (s *Unbound) Gather(acc telegraf.Accumulator) error {
 		return err
 	}
 
-	out, err := s.run(*s)
+	out, err := s.run(s.Binary, s.Timeout, s.UseSudo, s.Server, s.ThreadAsTag, s.ConfigFile)
 	if err != nil {
 		return fmt.Errorf("error gathering metrics: %s", err)
 	}
@@ -143,6 +144,7 @@ func (s *Unbound) Gather(acc telegraf.Accumulator) error {
 
 	scanner := bufio.NewScanner(out)
 	for scanner.Scan() {
+
 		cols := strings.Split(scanner.Text(), "=")
 
 		// Check split correctness
@@ -189,6 +191,7 @@ func (s *Unbound) Gather(acc telegraf.Accumulator) error {
 			field := strings.Replace(stat, ".", "_", -1)
 			fields[field] = fieldValue
 		}
+
 	}
 
 	acc.AddFields("unbound", fields, nil)

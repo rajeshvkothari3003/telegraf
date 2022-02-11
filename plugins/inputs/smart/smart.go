@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
 	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/inputs"
 )
@@ -25,53 +24,37 @@ var (
 	// Device Model:     APPLE SSD SM256E
 	// Product:              HUH721212AL5204
 	// Model Number: TS128GMTE850
-	modelInfo = regexp.MustCompile(`^(Device Model|Product|Model Number):\s+(.*)$`)
+	modelInfo = regexp.MustCompile("^(Device Model|Product|Model Number):\\s+(.*)$")
 	// Serial Number:    S0X5NZBC422720
-	serialInfo = regexp.MustCompile(`(?i)^Serial Number:\s+(.*)$`)
+	serialInfo = regexp.MustCompile("(?i)^Serial Number:\\s+(.*)$")
 	// LU WWN Device Id: 5 002538 655584d30
-	wwnInfo = regexp.MustCompile(`^LU WWN Device Id:\s+(.*)$`)
+	wwnInfo = regexp.MustCompile("^LU WWN Device Id:\\s+(.*)$")
 	// User Capacity:    251,000,193,024 bytes [251 GB]
-	userCapacityInfo = regexp.MustCompile(`^User Capacity:\s+([0-9,]+)\s+bytes.*$`)
+	userCapacityInfo = regexp.MustCompile("^User Capacity:\\s+([0-9,]+)\\s+bytes.*$")
 	// SMART support is: Enabled
-	smartEnabledInfo = regexp.MustCompile(`^SMART support is:\s+(\w+)$`)
-	// Power mode is:    ACTIVE or IDLE or Power mode was:   STANDBY
-	powermodeInfo = regexp.MustCompile(`^Power mode \w+:\s+(\w+)`)
-	// Device is in STANDBY mode
-	standbyInfo = regexp.MustCompile(`^Device is in\s+(\w+)`)
+	smartEnabledInfo = regexp.MustCompile("^SMART support is:\\s+(\\w+)$")
 	// SMART overall-health self-assessment test result: PASSED
 	// SMART Health Status: OK
 	// PASSED, FAILED, UNKNOWN
-	smartOverallHealth = regexp.MustCompile(`^(SMART overall-health self-assessment test result|SMART Health Status):\s+(\w+).*$`)
+	smartOverallHealth = regexp.MustCompile("^(SMART overall-health self-assessment test result|SMART Health Status):\\s+(\\w+).*$")
 
-	// sasNVMeAttr is a SAS or NVMe SMART attribute
-	sasNVMeAttr = regexp.MustCompile(`^([^:]+):\s+(.+)$`)
+	// sasNvmeAttr is a SAS or NVME SMART attribute
+	sasNvmeAttr = regexp.MustCompile(`^([^:]+):\s+(.+)$`)
 
 	// ID# ATTRIBUTE_NAME          FLAGS    VALUE WORST THRESH FAIL RAW_VALUE
 	//   1 Raw_Read_Error_Rate     -O-RC-   200   200   000    -    0
 	//   5 Reallocated_Sector_Ct   PO--CK   100   100   000    -    0
 	// 192 Power-Off_Retract_Count -O--C-   097   097   000    -    14716
-	attribute = regexp.MustCompile(`^\s*([0-9]+)\s(\S+)\s+([-P][-O][-S][-R][-C][-K])\s+([0-9]+)\s+([0-9]+)\s+([0-9-]+)\s+([-\w]+)\s+([\w\+\.]+).*$`)
+	attribute = regexp.MustCompile("^\\s*([0-9]+)\\s(\\S+)\\s+([-P][-O][-S][-R][-C][-K])\\s+([0-9]+)\\s+([0-9]+)\\s+([0-9-]+)\\s+([-\\w]+)\\s+([\\w\\+\\.]+).*$")
 
 	//  Additional Smart Log for NVME device:nvme0 namespace-id:ffffffff
-	// nvme version 1.14+ metrics:
-	// ID             KEY                                 Normalized     Raw
-	// 0xab    program_fail_count                             100         0
-
-	// nvme deprecated metric format:
 	//	key                               normalized raw
 	//	program_fail_count              : 100%       0
-
-	// REGEX patter supports deprecated metrics (nvme-cli version below 1.14) and metrics from nvme-cli 1.14 (and above).
-	intelExpressionPattern = regexp.MustCompile(`^([A-Za-z0-9_\s]+)[:|\s]+(\d+)[%|\s]+(.+)`)
+	intelExpressionPattern = regexp.MustCompile(`^([\w\s]+):([\w\s]+)%(.+)`)
 
 	//	vid     : 0x8086
 	//	sn      : CFGT53260XSP8011P
 	nvmeIDCtrlExpressionPattern = regexp.MustCompile(`^([\w\s]+):([\s\w]+)`)
-
-	// Format from nvme-cli 1.14 (and above) gives ID and KEY, this regex is for separating id from key.
-	//  ID			  KEY
-	// 0xab    program_fail_count
-	nvmeIDSeparatePattern = regexp.MustCompile(`^([A-Za-z0-9_]+)(.+)`)
 
 	deviceFieldIds = map[string]string{
 		"1":   "read_error_rate",
@@ -82,7 +65,7 @@ var (
 	}
 
 	// to obtain metrics from smartctl
-	sasNVMeAttributes = map[string]struct {
+	sasNvmeAttributes = map[string]struct {
 		ID    string
 		Name  string
 		Parse func(fields, deviceFields map[string]interface{}, str string) error
@@ -225,48 +208,9 @@ var (
 			Parse: parseTemperatureSensor,
 		},
 	}
-	// To obtain Intel specific metrics from nvme-cli version 1.14 and above.
-	intelAttributes = map[string]struct {
-		ID    string
-		Name  string
-		Parse func(acc telegraf.Accumulator, fields map[string]interface{}, tags map[string]string, str string) error
-	}{
-		"program_fail_count": {
-			Name: "Program_Fail_Count",
-		},
-		"erase_fail_count": {
-			Name: "Erase_Fail_Count",
-		},
-		"wear_leveling_count": { // previously: "wear_leveling"
-			Name: "Wear_Leveling_Count",
-		},
-		"e2e_error_detect_count": { // previously: "end_to_end_error_detection_count"
-			Name: "End_To_End_Error_Detection_Count",
-		},
-		"crc_error_count": {
-			Name: "Crc_Error_Count",
-		},
-		"media_wear_percentage": { // previously: "timed_workload_media_wear"
-			Name: "Media_Wear_Percentage",
-		},
-		"host_reads": {
-			Name: "Host_Reads",
-		},
-		"timed_work_load": { // previously: "timed_workload_timer"
-			Name: "Timed_Workload_Timer",
-		},
-		"thermal_throttle_status": {
-			Name: "Thermal_Throttle_Status",
-		},
-		"retry_buff_overflow_count": { // previously: "retry_buffer_overflow_count"
-			Name: "Retry_Buffer_Overflow_Count",
-		},
-		"pll_lock_loss_counter": { // previously: "pll_lock_loss_count"
-			Name: "Pll_Lock_Loss_Count",
-		},
-	}
+
 	// to obtain Intel specific metrics from nvme-cli
-	intelAttributesDeprecatedFormat = map[string]struct {
+	intelAttributes = map[string]struct {
 		ID    string
 		Name  string
 		Parse func(acc telegraf.Accumulator, fields map[string]interface{}, tags map[string]string, str string) error
@@ -320,24 +264,21 @@ var (
 			Parse: parseBytesWritten,
 		},
 	}
-
-	knownReadMethods = []string{"concurrent", "sequential"}
 )
 
 // Smart plugin reads metrics from storage devices supporting S.M.A.R.T.
 type Smart struct {
-	Path             string          `toml:"path"` //deprecated - to keep backward compatibility
-	PathSmartctl     string          `toml:"path_smartctl"`
-	PathNVMe         string          `toml:"path_nvme"`
-	Nocheck          string          `toml:"nocheck"`
-	EnableExtensions []string        `toml:"enable_extensions"`
-	Attributes       bool            `toml:"attributes"`
-	Excludes         []string        `toml:"excludes"`
-	Devices          []string        `toml:"devices"`
-	UseSudo          bool            `toml:"use_sudo"`
-	Timeout          config.Duration `toml:"timeout"`
-	ReadMethod       string          `toml:"read_method"`
-	Log              telegraf.Logger `toml:"-"`
+	Path             string            `toml:"path"` //deprecated - to keep backward compatibility
+	PathSmartctl     string            `toml:"path_smartctl"`
+	PathNVMe         string            `toml:"path_nvme"`
+	Nocheck          string            `toml:"nocheck"`
+	EnableExtensions []string          `toml:"enable_extensions"`
+	Attributes       bool              `toml:"attributes"`
+	Excludes         []string          `toml:"excludes"`
+	Devices          []string          `toml:"devices"`
+	UseSudo          bool              `toml:"use_sudo"`
+	Timeout          internal.Duration `toml:"timeout"`
+	Log              telegraf.Logger   `toml:"-"`
 }
 
 type nvmeDevice struct {
@@ -387,20 +328,11 @@ var sampleConfig = `
 
   ## Timeout for the cli command to complete.
   # timeout = "30s"
-
-  ## Optionally call smartctl and nvme-cli with a specific concurrency policy.
-  ## By default, smartctl and nvme-cli are called in separate threads (goroutines) to gather disk attributes.
-  ## Some devices (e.g. disks in RAID arrays) may have access limitations that require sequential reading of
-  ## SMART data - one individual array drive at the time. In such case please set this configuration option
-  ## to "sequential" to get readings for all drives.
-  ## valid options: concurrent, sequential
-  # read_method = "concurrent"
 `
 
 func newSmart() *Smart {
 	return &Smart{
-		Timeout:    config.Duration(time.Second * 30),
-		ReadMethod: "concurrent",
+		Timeout: internal.Duration{Duration: time.Second * 30},
 	}
 }
 
@@ -429,10 +361,6 @@ func (m *Smart) Init() error {
 	//if `path_nvme` is not provided in config, try to find nvme binary in PATH
 	if len(m.PathNVMe) == 0 {
 		m.PathNVMe, _ = exec.LookPath("nvme")
-	}
-
-	if !contains(knownReadMethods, m.ReadMethod) {
-		return fmt.Errorf("provided read method `%s` is not valid", m.ReadMethod)
 	}
 
 	err := validatePath(m.PathSmartctl)
@@ -471,9 +399,9 @@ func (m *Smart) Gather(acc telegraf.Accumulator) error {
 			if err != nil {
 				return err
 			}
-			nvmeDevices := distinguishNVMeDevices(devicesFromConfig, scannedNVMeDevices)
+			NVMeDevices := distinguishNVMeDevices(devicesFromConfig, scannedNVMeDevices)
 
-			m.getVendorNVMeAttributes(acc, nvmeDevices)
+			m.getVendorNVMeAttributes(acc, NVMeDevices)
 		}
 		return nil
 	}
@@ -501,28 +429,28 @@ func (m *Smart) scanAllDevices(ignoreExcludes bool) ([]string, []string, error) 
 	}
 
 	// this will return only NVMe devices
-	nvmeDevices, err := m.scanDevices(ignoreExcludes, "--scan", "--device=nvme")
+	NVMeDevices, err := m.scanDevices(ignoreExcludes, "--scan", "--device=nvme")
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// to handle all versions of smartctl this will return only non NVMe devices
-	nonNVMeDevices := difference(devices, nvmeDevices)
-	return nvmeDevices, nonNVMeDevices, nil
+	nonNVMeDevices := difference(devices, NVMeDevices)
+	return NVMeDevices, nonNVMeDevices, nil
 }
 
 func distinguishNVMeDevices(userDevices []string, availableNVMeDevices []string) []string {
-	var nvmeDevices []string
+	var NVMeDevices []string
 
 	for _, userDevice := range userDevices {
-		for _, availableNVMeDevice := range availableNVMeDevices {
+		for _, NVMeDevice := range availableNVMeDevices {
 			// double check. E.g. in case when nvme0 is equal nvme0n1, will check if "nvme0" part is present.
-			if strings.Contains(availableNVMeDevice, userDevice) || strings.Contains(userDevice, availableNVMeDevice) {
-				nvmeDevices = append(nvmeDevices, userDevice)
+			if strings.Contains(NVMeDevice, userDevice) || strings.Contains(userDevice, NVMeDevice) {
+				NVMeDevices = append(NVMeDevices, userDevice)
 			}
 		}
 	}
-	return nvmeDevices
+	return NVMeDevices
 }
 
 // Scan for S.M.A.R.T. devices from smartctl
@@ -549,12 +477,12 @@ func (m *Smart) scanDevices(ignoreExcludes bool, scanArgs ...string) ([]string, 
 }
 
 // Wrap with sudo
-var runCmd = func(timeout config.Duration, sudo bool, command string, args ...string) ([]byte, error) {
+var runCmd = func(timeout internal.Duration, sudo bool, command string, args ...string) ([]byte, error) {
 	cmd := exec.Command(command, args...)
 	if sudo {
 		cmd = exec.Command("sudo", append([]string{"-n", command}, args...)...)
 	}
-	return internal.CombinedOutputTimeout(cmd, time.Duration(timeout))
+	return internal.CombinedOutputTimeout(cmd, timeout.Duration)
 }
 
 func excludedDev(excludes []string, deviceLine string) bool {
@@ -573,86 +501,69 @@ func excludedDev(excludes []string, deviceLine string) bool {
 func (m *Smart) getAttributes(acc telegraf.Accumulator, devices []string) {
 	var wg sync.WaitGroup
 	wg.Add(len(devices))
+
 	for _, device := range devices {
-		switch m.ReadMethod {
-		case "concurrent":
-			go m.gatherDisk(acc, device, &wg)
-		case "sequential":
-			m.gatherDisk(acc, device, &wg)
-		default:
-			wg.Done()
-		}
+		go gatherDisk(acc, m.Timeout, m.UseSudo, m.Attributes, m.PathSmartctl, m.Nocheck, device, &wg)
 	}
 
 	wg.Wait()
 }
 
 func (m *Smart) getVendorNVMeAttributes(acc telegraf.Accumulator, devices []string) {
-	nvmeDevices := getDeviceInfoForNVMeDisks(acc, devices, m.PathNVMe, m.Timeout, m.UseSudo)
+	NVMeDevices := getDeviceInfoForNVMeDisks(acc, devices, m.PathNVMe, m.Timeout, m.UseSudo)
 
 	var wg sync.WaitGroup
 
-	for _, device := range nvmeDevices {
+	for _, device := range NVMeDevices {
 		if contains(m.EnableExtensions, "auto-on") {
-			// nolint:revive // one case switch on purpose to demonstrate potential extensions
 			switch device.vendorID {
 			case intelVID:
 				wg.Add(1)
-				switch m.ReadMethod {
-				case "concurrent":
-					go gatherIntelNVMeDisk(acc, m.Timeout, m.UseSudo, m.PathNVMe, device, &wg)
-				case "sequential":
-					gatherIntelNVMeDisk(acc, m.Timeout, m.UseSudo, m.PathNVMe, device, &wg)
-				default:
-					wg.Done()
-				}
+				go gatherIntelNVMeDisk(acc, m.Timeout, m.UseSudo, m.PathNVMe, device, &wg)
 			}
 		} else if contains(m.EnableExtensions, "Intel") && device.vendorID == intelVID {
 			wg.Add(1)
-			switch m.ReadMethod {
-			case "concurrent":
-				go gatherIntelNVMeDisk(acc, m.Timeout, m.UseSudo, m.PathNVMe, device, &wg)
-			case "sequential":
-				gatherIntelNVMeDisk(acc, m.Timeout, m.UseSudo, m.PathNVMe, device, &wg)
-			default:
-				wg.Done()
-			}
+			go gatherIntelNVMeDisk(acc, m.Timeout, m.UseSudo, m.PathNVMe, device, &wg)
 		}
 	}
 	wg.Wait()
 }
 
-func getDeviceInfoForNVMeDisks(acc telegraf.Accumulator, devices []string, nvme string, timeout config.Duration, useSudo bool) []nvmeDevice {
-	var nvmeDevices []nvmeDevice
+func getDeviceInfoForNVMeDisks(acc telegraf.Accumulator, devices []string, nvme string, timeout internal.Duration, useSudo bool) []nvmeDevice {
+	var NVMeDevices []nvmeDevice
 
 	for _, device := range devices {
-		newDevice, err := gatherNVMeDeviceInfo(nvme, device, timeout, useSudo)
+		vid, sn, mn, err := gatherNVMeDeviceInfo(nvme, device, timeout, useSudo)
 		if err != nil {
 			acc.AddError(fmt.Errorf("cannot find device info for %s device", device))
 			continue
 		}
-		nvmeDevices = append(nvmeDevices, newDevice)
+		newDevice := nvmeDevice{
+			name:         device,
+			vendorID:     vid,
+			model:        mn,
+			serialNumber: sn,
+		}
+		NVMeDevices = append(NVMeDevices, newDevice)
 	}
-	return nvmeDevices
+	return NVMeDevices
 }
 
-func gatherNVMeDeviceInfo(nvme, deviceName string, timeout config.Duration, useSudo bool) (device nvmeDevice, err error) {
+func gatherNVMeDeviceInfo(nvme, device string, timeout internal.Duration, useSudo bool) (string, string, string, error) {
 	args := []string{"id-ctrl"}
-	args = append(args, strings.Split(deviceName, " ")...)
+	args = append(args, strings.Split(device, " ")...)
 	out, err := runCmd(timeout, useSudo, nvme, args...)
 	if err != nil {
-		return device, err
+		return "", "", "", err
 	}
 	outStr := string(out)
-	device, err = findNVMeDeviceInfo(outStr)
-	if err != nil {
-		return device, err
-	}
-	device.name = deviceName
-	return device, nil
+
+	vid, sn, mn, err := findNVMeDeviceInfo(outStr)
+
+	return vid, sn, mn, err
 }
 
-func findNVMeDeviceInfo(output string) (nvmeDevice, error) {
+func findNVMeDeviceInfo(output string) (string, string, string, error) {
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	var vid, sn, mn string
 
@@ -664,7 +575,7 @@ func findNVMeDeviceInfo(output string) (nvmeDevice, error) {
 			matches[2] = strings.TrimSpace(matches[2])
 			if matches[1] == "vid" {
 				if _, err := fmt.Sscanf(matches[2], "%s", &vid); err != nil {
-					return nvmeDevice{}, err
+					return "", "", "", err
 				}
 			}
 			if matches[1] == "sn" {
@@ -675,16 +586,10 @@ func findNVMeDeviceInfo(output string) (nvmeDevice, error) {
 			}
 		}
 	}
-
-	newDevice := nvmeDevice{
-		vendorID:     vid,
-		model:        mn,
-		serialNumber: sn,
-	}
-	return newDevice, nil
+	return vid, sn, mn, nil
 }
 
-func gatherIntelNVMeDisk(acc telegraf.Accumulator, timeout config.Duration, usesudo bool, nvme string, device nvmeDevice, wg *sync.WaitGroup) {
+func gatherIntelNVMeDisk(acc telegraf.Accumulator, timeout internal.Duration, usesudo bool, nvme string, device nvmeDevice, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	args := []string{"intel", "smart-log-add"}
@@ -709,31 +614,10 @@ func gatherIntelNVMeDisk(acc telegraf.Accumulator, timeout config.Duration, uses
 		tags["model"] = device.model
 		tags["serial_no"] = device.serialNumber
 
-		// Create struct to initialize later with intel attributes.
-		var (
-			attr = struct {
-				ID    string
-				Name  string
-				Parse func(acc telegraf.Accumulator, fields map[string]interface{}, tags map[string]string, str string) error
-			}{}
-			attrExists bool
-		)
-
-		if matches := intelExpressionPattern.FindStringSubmatch(line); len(matches) > 3 && len(matches[1]) > 1 {
-			// Check if nvme shows metrics in deprecated format or in format with ID.
-			// Based on that, an attribute map with metrics is chosen.
-			// If string has more than one character it means it has KEY there, otherwise it's empty string ("").
-			if separatedIDAndKey := nvmeIDSeparatePattern.FindStringSubmatch(matches[1]); len(strings.TrimSpace(separatedIDAndKey[2])) > 1 {
-				matches[1] = strings.TrimSpace(separatedIDAndKey[2])
-				attr, attrExists = intelAttributes[matches[1]]
-			} else {
-				matches[1] = strings.TrimSpace(matches[1])
-				attr, attrExists = intelAttributesDeprecatedFormat[matches[1]]
-			}
-
+		if matches := intelExpressionPattern.FindStringSubmatch(line); len(matches) > 3 {
+			matches[1] = strings.TrimSpace(matches[1])
 			matches[3] = strings.TrimSpace(matches[3])
-
-			if attrExists {
+			if attr, ok := intelAttributes[matches[1]]; ok {
 				tags["name"] = attr.Name
 				if attr.ID != "" {
 					tags["id"] = attr.ID
@@ -752,18 +636,18 @@ func gatherIntelNVMeDisk(acc telegraf.Accumulator, timeout config.Duration, uses
 	}
 }
 
-func (m *Smart) gatherDisk(acc telegraf.Accumulator, device string, wg *sync.WaitGroup) {
+func gatherDisk(acc telegraf.Accumulator, timeout internal.Duration, usesudo, collectAttributes bool, smartctl, nocheck, device string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	// smartctl 5.41 & 5.42 have are broken regarding handling of --nocheck/-n
-	args := []string{"--info", "--health", "--attributes", "--tolerance=verypermissive", "-n", m.Nocheck, "--format=brief"}
+	args := []string{"--info", "--health", "--attributes", "--tolerance=verypermissive", "-n", nocheck, "--format=brief"}
 	args = append(args, strings.Split(device, " ")...)
-	out, e := runCmd(m.Timeout, m.UseSudo, m.PathSmartctl, args...)
+	out, e := runCmd(timeout, usesudo, smartctl, args...)
 	outStr := string(out)
 
 	// Ignore all exit statuses except if it is a command line parse error
 	exitStatus, er := exitStatus(e)
 	if er != nil {
-		acc.AddError(fmt.Errorf("failed to run command '%s %s': %s - %s", m.PathSmartctl, strings.Join(args, " "), e, outStr))
+		acc.AddError(fmt.Errorf("failed to run command '%s %s': %s - %s", smartctl, strings.Join(args, " "), e, outStr))
 		return
 	}
 
@@ -808,24 +692,11 @@ func (m *Smart) gatherDisk(acc telegraf.Accumulator, device string, wg *sync.Wai
 			deviceFields["health_ok"] = health[2] == "PASSED" || health[2] == "OK"
 		}
 
-		// checks to see if there is a power mode to print to user
-		// if not look for Device is in STANDBY which happens when
-		// nocheck is set to standby (will exit to not spin up the disk)
-		// otherwise nothing is found so nothing is printed (NVMe does not show power)
-		if power := powermodeInfo.FindStringSubmatch(line); len(power) > 1 {
-			deviceTags["power"] = power[1]
-		} else {
-			if power := standbyInfo.FindStringSubmatch(line); len(power) > 1 {
-				deviceTags["power"] = power[1]
-			}
-		}
-
 		tags := map[string]string{}
 		fields := make(map[string]interface{})
 
-		if m.Attributes {
-			//add power mode
-			keys := [...]string{"device", "model", "serial_no", "wwn", "capacity", "enabled", "power"}
+		if collectAttributes {
+			keys := [...]string{"device", "model", "serial_no", "wwn", "capacity", "enabled"}
 			for _, key := range keys {
 				if value, ok := deviceTags[key]; ok {
 					tags[key] = value
@@ -835,8 +706,8 @@ func (m *Smart) gatherDisk(acc telegraf.Accumulator, device string, wg *sync.Wai
 
 		attr := attribute.FindStringSubmatch(line)
 		if len(attr) > 1 {
-			// attribute has been found, add it only if m.Attributes is true
-			if m.Attributes {
+			// attribute has been found, add it only if collectAttributes is true
+			if collectAttributes {
 				tags["id"] = attr[1]
 				tags["name"] = attr[2]
 				tags["flags"] = attr[3]
@@ -869,8 +740,8 @@ func (m *Smart) gatherDisk(acc telegraf.Accumulator, device string, wg *sync.Wai
 			}
 		} else {
 			// what was found is not a vendor attribute
-			if matches := sasNVMeAttr.FindStringSubmatch(line); len(matches) > 2 {
-				if attr, ok := sasNVMeAttributes[matches[1]]; ok {
+			if matches := sasNvmeAttr.FindStringSubmatch(line); len(matches) > 2 {
+				if attr, ok := sasNvmeAttributes[matches[1]]; ok {
 					tags["name"] = attr.Name
 					if attr.ID != "" {
 						tags["id"] = attr.ID
@@ -885,8 +756,8 @@ func (m *Smart) gatherDisk(acc telegraf.Accumulator, device string, wg *sync.Wai
 						continue
 					}
 					// if the field is classified as an attribute, only add it
-					// if m.Attributes is true
-					if m.Attributes {
+					// if collectAttributes is true
+					if collectAttributes {
 						acc.AddFields("smart_attribute", fields, tags)
 					}
 				}
@@ -1083,13 +954,13 @@ func parseTemperatureSensor(fields, _ map[string]interface{}, str string) error 
 	return nil
 }
 
-func validatePath(filePath string) error {
-	pathInfo, err := os.Stat(filePath)
+func validatePath(path string) error {
+	pathInfo, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		return fmt.Errorf("provided path does not exist: [%s]", filePath)
+		return fmt.Errorf("provided path does not exist: [%s]", path)
 	}
 	if mode := pathInfo.Mode(); !mode.IsRegular() {
-		return fmt.Errorf("provided path does not point to a regular file: [%s]", filePath)
+		return fmt.Errorf("provided path does not point to a regular file: [%s]", path)
 	}
 	return nil
 }

@@ -10,9 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 var masterMetrics map[string]interface{}
@@ -279,6 +278,32 @@ func generateMetrics() {
 	for _, k := range slaveMetricNames {
 		slaveMetrics[k] = rand.Float64()
 	}
+
+	// slaveTaskMetrics = map[string]interface{}{
+	// 	"executor_id":   fmt.Sprintf("task_name.%s", randUUID()),
+	// 	"executor_name": "Some task description",
+	// 	"framework_id":  randUUID(),
+	// 	"source":        fmt.Sprintf("task_source.%s", randUUID()),
+	// 	"statistics": map[string]interface{}{
+	// 		"cpus_limit":                    rand.Float64(),
+	// 		"cpus_system_time_secs":         rand.Float64(),
+	// 		"cpus_user_time_secs":           rand.Float64(),
+	// 		"mem_anon_bytes":                float64(rand.Int63()),
+	// 		"mem_cache_bytes":               float64(rand.Int63()),
+	// 		"mem_critical_pressure_counter": float64(rand.Int63()),
+	// 		"mem_file_bytes":                float64(rand.Int63()),
+	// 		"mem_limit_bytes":               float64(rand.Int63()),
+	// 		"mem_low_pressure_counter":      float64(rand.Int63()),
+	// 		"mem_mapped_file_bytes":         float64(rand.Int63()),
+	// 		"mem_medium_pressure_counter":   float64(rand.Int63()),
+	// 		"mem_rss_bytes":                 float64(rand.Int63()),
+	// 		"mem_swap_bytes":                float64(rand.Int63()),
+	// 		"mem_total_bytes":               float64(rand.Int63()),
+	// 		"mem_total_memsw_bytes":         float64(rand.Int63()),
+	// 		"mem_unevictable_bytes":         float64(rand.Int63()),
+	// 		"timestamp":                     rand.Float64(),
+	// 	},
+	// }
 }
 
 func TestMain(m *testing.M) {
@@ -288,8 +313,6 @@ func TestMain(m *testing.M) {
 	masterRouter.HandleFunc("/metrics/snapshot", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
-		// Ignore the returned error as we cannot do anything about it anyway
-		//nolint:errcheck,revive
 		json.NewEncoder(w).Encode(masterMetrics)
 	})
 	masterTestServer = httptest.NewServer(masterRouter)
@@ -298,10 +321,13 @@ func TestMain(m *testing.M) {
 	slaveRouter.HandleFunc("/metrics/snapshot", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
-		// Ignore the returned error as we cannot do anything about it anyway
-		//nolint:errcheck,revive
 		json.NewEncoder(w).Encode(slaveMetrics)
 	})
+	// slaveRouter.HandleFunc("/monitor/statistics", func(w http.ResponseWriter, r *http.Request) {
+	// 	w.WriteHeader(http.StatusOK)
+	// 	w.Header().Set("Content-Type", "application/json")
+	// 	json.NewEncoder(w).Encode([]map[string]interface{}{slaveTaskMetrics})
+	// })
 	slaveTestServer = httptest.NewServer(slaveRouter)
 
 	rc := m.Run()
@@ -320,7 +346,11 @@ func TestMesosMaster(t *testing.T) {
 		Timeout: 10,
 	}
 
-	require.NoError(t, acc.GatherError(m.Gather))
+	err := acc.GatherError(m.Gather)
+
+	if err != nil {
+		t.Errorf(err.Error())
+	}
 
 	acc.AssertContainsFields(t, "mesos", masterMetrics)
 }
@@ -341,9 +371,10 @@ func TestMasterFilter(t *testing.T) {
 
 	// Assert expected metrics are present.
 	for _, v := range m.MasterCols {
-		for _, x := range m.getMetrics(MASTER, v) {
-			_, ok := masterMetrics[x]
-			require.Truef(t, ok, "Didn't find key %s, it should present.", x)
+		for _, x := range getMetrics(MASTER, v) {
+			if _, ok := masterMetrics[x]; !ok {
+				t.Errorf("Didn't find key %s, it should present.", x)
+			}
 		}
 	}
 	// m.MasterCols includes "allocator", so allocator metrics should be present.
@@ -351,16 +382,18 @@ func TestMasterFilter(t *testing.T) {
 	// getMetrics(). We have to find them by checking name prefixes.
 	for _, x := range masterMetricNames {
 		if strings.HasPrefix(x, "allocator/") {
-			_, ok := masterMetrics[x]
-			require.Truef(t, ok, "Didn't find key %s, it should present.", x)
+			if _, ok := masterMetrics[x]; !ok {
+				t.Errorf("Didn't find key %s, it should be present.", x)
+			}
 		}
 	}
 
 	// Assert unexpected metrics are not present.
 	for _, v := range b {
-		for _, x := range m.getMetrics(MASTER, v) {
-			_, ok := masterMetrics[x]
-			require.Falsef(t, ok, "Found key %s, it should be gone.", x)
+		for _, x := range getMetrics(MASTER, v) {
+			if _, ok := masterMetrics[x]; ok {
+				t.Errorf("Found key %s, it should be gone.", x)
+			}
 		}
 	}
 	// m.MasterCols does not include "framework_offers", so framework_offers metrics should not be present.
@@ -368,7 +401,7 @@ func TestMasterFilter(t *testing.T) {
 	// getMetrics(). We have to find them by checking name prefixes.
 	for k := range masterMetrics {
 		if strings.HasPrefix(k, "master/frameworks/") || strings.HasPrefix(k, "frameworks/") {
-			require.Failf(t, "Found key %s, it should be gone.", k)
+			t.Errorf("Found key %s, it should be gone.", k)
 		}
 	}
 }
@@ -384,7 +417,11 @@ func TestMesosSlave(t *testing.T) {
 		Timeout: 10,
 	}
 
-	require.NoError(t, acc.GatherError(m.Gather))
+	err := acc.GatherError(m.Gather)
+
+	if err != nil {
+		t.Errorf(err.Error())
+	}
 
 	acc.AssertContainsFields(t, "mesos", slaveMetrics)
 }
@@ -403,15 +440,17 @@ func TestSlaveFilter(t *testing.T) {
 	m.filterMetrics(SLAVE, &slaveMetrics)
 
 	for _, v := range b {
-		for _, x := range m.getMetrics(SLAVE, v) {
-			_, ok := slaveMetrics[x]
-			require.Falsef(t, ok, "Found key %s, it should be gone.", x)
+		for _, x := range getMetrics(SLAVE, v) {
+			if _, ok := slaveMetrics[x]; ok {
+				t.Errorf("Found key %s, it should be gone.", x)
+			}
 		}
 	}
 	for _, v := range m.MasterCols {
-		for _, x := range m.getMetrics(SLAVE, v) {
-			_, ok := slaveMetrics[x]
-			require.Truef(t, ok, "Didn't find key %s, it should present.", x)
+		for _, x := range getMetrics(SLAVE, v) {
+			if _, ok := slaveMetrics[x]; !ok {
+				t.Errorf("Didn't find key %s, it should present.", x)
+			}
 		}
 	}
 }

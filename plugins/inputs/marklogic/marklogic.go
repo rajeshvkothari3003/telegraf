@@ -108,6 +108,7 @@ var sampleConfig = `
 
 // Init parse all source URLs and place on the Marklogic struct
 func (c *Marklogic) Init() error {
+
 	if len(c.URL) == 0 {
 		c.URL = "http://localhost:8002/"
 	}
@@ -163,9 +164,9 @@ func (c *Marklogic) Gather(accumulator telegraf.Accumulator) error {
 	return nil
 }
 
-func (c *Marklogic) fetchAndInsertData(acc telegraf.Accumulator, address string) error {
+func (c *Marklogic) fetchAndInsertData(acc telegraf.Accumulator, url string) error {
 	ml := &MlHost{}
-	if err := c.gatherJSONData(address, ml); err != nil {
+	if err := c.gatherJSONData(url, ml); err != nil {
 		return err
 	}
 
@@ -225,8 +226,8 @@ func (c *Marklogic) createHTTPClient() (*http.Client, error) {
 	return client, nil
 }
 
-func (c *Marklogic) gatherJSONData(address string, v interface{}) error {
-	req, err := http.NewRequest("GET", address, nil)
+func (c *Marklogic) gatherJSONData(url string, v interface{}) error {
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
 	}

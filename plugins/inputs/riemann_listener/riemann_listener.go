@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -14,34 +15,34 @@ import (
 	"sync"
 	"time"
 
-	riemanngo "github.com/riemann/riemann-go-client"
-	riemangoProto "github.com/riemann/riemann-go-client/proto"
-	"google.golang.org/protobuf/proto"
-
-	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
 	"github.com/influxdata/telegraf/metric"
+
+	"github.com/gogo/protobuf/proto"
+	"github.com/influxdata/telegraf"
+	"github.com/influxdata/telegraf/internal"
 	tlsint "github.com/influxdata/telegraf/plugins/common/tls"
 	"github.com/influxdata/telegraf/plugins/inputs"
+	riemanngo "github.com/riemann/riemann-go-client"
+	riemangoProto "github.com/riemann/riemann-go-client/proto"
 )
 
 type RiemannSocketListener struct {
-	ServiceAddress  string           `toml:"service_address"`
-	MaxConnections  int              `toml:"max_connections"`
-	ReadBufferSize  config.Size      `toml:"read_buffer_size"`
-	ReadTimeout     *config.Duration `toml:"read_timeout"`
-	KeepAlivePeriod *config.Duration `toml:"keep_alive_period"`
-	SocketMode      string           `toml:"socket_mode"`
+	ServiceAddress  string             `toml:"service_address"`
+	MaxConnections  int                `toml:"max_connections"`
+	ReadBufferSize  internal.Size      `toml:"read_buffer_size"`
+	ReadTimeout     *internal.Duration `toml:"read_timeout"`
+	KeepAlivePeriod *internal.Duration `toml:"keep_alive_period"`
+	SocketMode      string             `toml:"socket_mode"`
 	tlsint.ServerConfig
 
 	wg sync.WaitGroup
 
-	Log telegraf.Logger `toml:"-"`
+	Log telegraf.Logger
 
 	telegraf.Accumulator
 }
 type setReadBufferer interface {
-	SetReadBuffer(sizeInBytes int) error
+	SetReadBuffer(bytes int) error
 }
 
 type riemannListener struct {
@@ -74,11 +75,9 @@ func (rsl *riemannListener) listen(ctx context.Context) {
 				break
 			}
 
-			if rsl.ReadBufferSize > 0 {
+			if rsl.ReadBufferSize.Size > 0 {
 				if srb, ok := c.(setReadBufferer); ok {
-					if err := srb.SetReadBuffer(int(rsl.ReadBufferSize)); err != nil {
-						rsl.Log.Warnf("Setting read buffer failed: %v", err)
-					}
+					srb.SetReadBuffer(int(rsl.ReadBufferSize.Size))
 				} else {
 					rsl.Log.Warnf("Unable to set read buffer on a %s socket", rsl.sockType)
 				}
@@ -87,9 +86,7 @@ func (rsl *riemannListener) listen(ctx context.Context) {
 			rsl.connectionsMtx.Lock()
 			if rsl.MaxConnections > 0 && len(rsl.connections) >= rsl.MaxConnections {
 				rsl.connectionsMtx.Unlock()
-				if err := c.Close(); err != nil {
-					rsl.Log.Warnf("Closing the connection failed: %v", err)
-				}
+				c.Close()
 				continue
 			}
 			rsl.connections[c.RemoteAddr().String()] = c
@@ -113,9 +110,7 @@ func (rsl *riemannListener) listen(ctx context.Context) {
 func (rsl *riemannListener) closeAllConnections() {
 	rsl.connectionsMtx.Lock()
 	for _, c := range rsl.connections {
-		if err := c.Close(); err != nil {
-			rsl.Log.Warnf("Closing the connection failed: %v", err.Error())
-		}
+		c.Close()
 	}
 	rsl.connectionsMtx.Unlock()
 }
@@ -128,13 +123,13 @@ func (rsl *riemannListener) setKeepAlive(c net.Conn) error {
 	if !ok {
 		return fmt.Errorf("cannot set keep alive on a %s socket", strings.SplitN(rsl.ServiceAddress, "://", 2)[0])
 	}
-	if *rsl.KeepAlivePeriod == 0 {
+	if rsl.KeepAlivePeriod.Duration == 0 {
 		return tcpc.SetKeepAlive(false)
 	}
 	if err := tcpc.SetKeepAlive(true); err != nil {
 		return err
 	}
-	return tcpc.SetKeepAlivePeriod(time.Duration(*rsl.KeepAlivePeriod))
+	return tcpc.SetKeepAlivePeriod(rsl.KeepAlivePeriod.Duration)
 }
 
 func (rsl *riemannListener) removeConnection(c net.Conn) {
@@ -161,16 +156,21 @@ func readMessages(r io.Reader, p []byte) error {
 	return nil
 }
 
+func checkError(err error) {
+	log.Println("The error is")
+	if err != nil {
+		log.Println(err.Error())
+	}
+}
+
 func (rsl *riemannListener) read(conn net.Conn) {
 	defer rsl.removeConnection(conn)
 	defer conn.Close()
 	var err error
 
 	for {
-		if rsl.ReadTimeout != nil && *rsl.ReadTimeout > 0 {
-			if err := conn.SetDeadline(time.Now().Add(time.Duration(*rsl.ReadTimeout))); err != nil {
-				rsl.Log.Warnf("Setting deadline failed: %v", err)
-			}
+		if rsl.ReadTimeout != nil && rsl.ReadTimeout.Duration > 0 {
+			conn.SetDeadline(time.Now().Add(rsl.ReadTimeout.Duration))
 		}
 
 		messagePb := &riemangoProto.Msg{}
@@ -179,7 +179,7 @@ func (rsl *riemannListener) read(conn net.Conn) {
 		if err = binary.Read(conn, binary.BigEndian, &header); err != nil {
 			if err.Error() != "EOF" {
 				rsl.Log.Debugf("Failed to read header")
-				rsl.riemannReturnErrorResponse(conn, err.Error())
+				riemannReturnErrorResponse(conn, err.Error())
 				return
 			}
 			return
@@ -188,19 +188,19 @@ func (rsl *riemannListener) read(conn net.Conn) {
 
 		if err = readMessages(conn, data); err != nil {
 			rsl.Log.Debugf("Failed to read body: %s", err.Error())
-			rsl.riemannReturnErrorResponse(conn, "Failed to read body")
+			riemannReturnErrorResponse(conn, "Failed to read body")
 			return
 		}
 		if err = proto.Unmarshal(data, messagePb); err != nil {
 			rsl.Log.Debugf("Failed to unmarshal: %s", err.Error())
-			rsl.riemannReturnErrorResponse(conn, "Failed to unmarshal")
+			riemannReturnErrorResponse(conn, "Failed to unmarshal")
 			return
 		}
 		riemannEvents := riemanngo.ProtocolBuffersToEvents(messagePb.Events)
 
 		for _, m := range riemannEvents {
 			if m.Service == "" {
-				rsl.riemannReturnErrorResponse(conn, "No Service Name")
+				riemannReturnErrorResponse(conn, "No Service Name")
 				return
 			}
 			tags := make(map[string]string)
@@ -213,55 +213,64 @@ func (rsl *riemannListener) read(conn net.Conn) {
 			tags["State"] = m.State
 			fieldValues["Metric"] = m.Metric
 			fieldValues["TTL"] = m.TTL.Seconds()
-			singleMetric := metric.New(m.Service, tags, fieldValues, m.Time, telegraf.Untyped)
+			singleMetric, err := metric.New(m.Service, tags, fieldValues, m.Time, telegraf.Untyped)
+			if err != nil {
+				rsl.Log.Debugf("Could not create metric for service %s at %s", m.Service, m.Time.String())
+				riemannReturnErrorResponse(conn, "Could not create metric")
+				return
+			}
+
 			rsl.AddMetric(singleMetric)
 		}
-		rsl.riemannReturnResponse(conn)
+		riemannReturnResponse(conn)
+
 	}
+
 }
 
-func (rsl *riemannListener) riemannReturnResponse(conn net.Conn) {
+func riemannReturnResponse(conn net.Conn) {
 	t := true
 	message := new(riemangoProto.Msg)
 	message.Ok = &t
 	returnData, err := proto.Marshal(message)
 	if err != nil {
-		rsl.Log.Errorf("The error is: %v", err)
+		checkError(err)
 		return
 	}
 	b := new(bytes.Buffer)
 	if err = binary.Write(b, binary.BigEndian, uint32(len(returnData))); err != nil {
-		rsl.Log.Errorf("The error is: %v", err)
+		checkError(err)
 	}
 	// send the msg length
 	if _, err = conn.Write(b.Bytes()); err != nil {
-		rsl.Log.Errorf("The error is: %v", err)
+		checkError(err)
 	}
 	if _, err = conn.Write(returnData); err != nil {
-		rsl.Log.Errorf("The error is: %v", err)
+		checkError(err)
 	}
 }
 
-func (rsl *riemannListener) riemannReturnErrorResponse(conn net.Conn, errorMessage string) {
+func riemannReturnErrorResponse(conn net.Conn, errorMessage string) {
 	t := false
 	message := new(riemangoProto.Msg)
 	message.Ok = &t
 	message.Error = &errorMessage
 	returnData, err := proto.Marshal(message)
 	if err != nil {
-		rsl.Log.Errorf("The error is: %v", err)
+		checkError(err)
 		return
 	}
 	b := new(bytes.Buffer)
 	if err = binary.Write(b, binary.BigEndian, uint32(len(returnData))); err != nil {
-		rsl.Log.Errorf("The error is: %v", err)
+		checkError(err)
 	}
 	// send the msg length
 	if _, err = conn.Write(b.Bytes()); err != nil {
-		rsl.Log.Errorf("The error is: %v", err)
+		checkError(err)
 	}
 	if _, err = conn.Write(returnData); err != nil {
-		rsl.Log.Errorf("The error is: %v", err)
+		log.Println("Somethign")
+		checkError(err)
 	}
 }
 
@@ -271,7 +280,7 @@ func (rsl *RiemannSocketListener) Description() string {
 
 func (rsl *RiemannSocketListener) SampleConfig() string {
 	return `
-  ## URL to listen on.
+  ## URL to listen on. 
   ## Default is "tcp://:5555"
   # service_address = "tcp://:8094"
   # service_address = "tcp://127.0.0.1:http"
@@ -305,7 +314,7 @@ func (rsl *RiemannSocketListener) Gather(_ telegraf.Accumulator) error {
 
 func (rsl *RiemannSocketListener) Start(acc telegraf.Accumulator) error {
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	go rsl.processOsSignals(cancelFunc)
+	go processOsSignals(cancelFunc)
 	rsl.Accumulator = acc
 	if rsl.ServiceAddress == "" {
 		rsl.Log.Warnf("Using default service_address tcp://:5555")
@@ -349,6 +358,7 @@ func (rsl *RiemannSocketListener) Start(acc telegraf.Accumulator) error {
 		go func() {
 			defer rsl.wg.Done()
 			rsl.listen(ctx)
+
 		}()
 	default:
 		return fmt.Errorf("unknown protocol '%s' in '%s'", protocol, rsl.ServiceAddress)
@@ -358,17 +368,19 @@ func (rsl *RiemannSocketListener) Start(acc telegraf.Accumulator) error {
 }
 
 // Handle cancellations from the process
-func (rsl *RiemannSocketListener) processOsSignals(cancelFunc context.CancelFunc) {
-	signalChan := make(chan os.Signal, 1)
+func processOsSignals(cancelFunc context.CancelFunc) {
+	signalChan := make(chan os.Signal)
 	signal.Notify(signalChan, os.Interrupt)
 	for {
 		sig := <-signalChan
-		if sig == os.Interrupt {
-			rsl.Log.Warn("Signal SIGINT is received, probably due to `Ctrl-C`, exiting...")
+		switch sig {
+		case os.Interrupt:
+			log.Println("Signal SIGINT is received, probably due to `Ctrl-C`, exiting ...")
 			cancelFunc()
 			return
 		}
 	}
+
 }
 
 func (rsl *RiemannSocketListener) Stop() {

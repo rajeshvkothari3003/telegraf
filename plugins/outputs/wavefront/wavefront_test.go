@@ -1,15 +1,14 @@
 package wavefront
 
 import (
-	"reflect"
-	"strings"
-	"testing"
-	"time"
-
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/metric"
 	"github.com/influxdata/telegraf/testutil"
 	"github.com/stretchr/testify/require"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
 )
 
 // default config used by Tests
@@ -33,7 +32,7 @@ func TestBuildMetrics(t *testing.T) {
 
 	pathReplacer = strings.NewReplacer("_", w.MetricSeparator)
 
-	testMetric1 := metric.New(
+	testMetric1, _ := metric.New(
 		"test.simple.metric",
 		map[string]string{"tag1": "value1", "host": "testHost"},
 		map[string]interface{}{"value": 123},
@@ -74,6 +73,7 @@ func TestBuildMetrics(t *testing.T) {
 			}
 		}
 	}
+
 }
 
 func TestBuildMetricsStrict(t *testing.T) {
@@ -113,6 +113,7 @@ func TestBuildMetricsStrict(t *testing.T) {
 			}
 		}
 	}
+
 }
 
 func TestBuildMetricsWithSimpleFields(t *testing.T) {
@@ -122,7 +123,7 @@ func TestBuildMetricsWithSimpleFields(t *testing.T) {
 
 	pathReplacer = strings.NewReplacer("_", w.MetricSeparator)
 
-	testMetric1 := metric.New(
+	testMetric1, _ := metric.New(
 		"test.simple.metric",
 		map[string]string{"tag1": "value1"},
 		map[string]interface{}{"value": 123},
@@ -151,9 +152,11 @@ func TestBuildMetricsWithSimpleFields(t *testing.T) {
 			}
 		}
 	}
+
 }
 
 func TestBuildTags(t *testing.T) {
+
 	w := defaultWavefront()
 
 	var tagtests = []struct {
@@ -281,6 +284,7 @@ func TestBuildValue(t *testing.T) {
 			t.Errorf("\nexpected\t%+v\nreceived\t%+v\n", vt.out, value)
 		}
 	}
+
 }
 
 func TestBuildValueString(t *testing.T) {
@@ -311,6 +315,7 @@ func TestBuildValueString(t *testing.T) {
 			t.Errorf("\nexpected\t%+v\nreceived\t%+v\n", vt.out, value)
 		}
 	}
+
 }
 
 func TestTagLimits(t *testing.T) {

@@ -1,4 +1,3 @@
-//go:build integration
 // +build integration
 
 package mongodb
@@ -6,9 +5,9 @@ package mongodb
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetDefaultTags(t *testing.T) {
@@ -16,7 +15,7 @@ func TestGetDefaultTags(t *testing.T) {
 		in  string
 		out string
 	}{
-		{"hostname", server.hostname},
+		{"hostname", server.Url.Host},
 	}
 	defaultTags := server.getDefaultTags()
 	for _, tt := range tagTests {
@@ -29,56 +28,14 @@ func TestGetDefaultTags(t *testing.T) {
 func TestAddDefaultStats(t *testing.T) {
 	var acc testutil.Accumulator
 
-	err := server.gatherData(&acc, false, true, true, true, []string{"local"})
+	err := server.gatherData(&acc, false)
 	require.NoError(t, err)
 
 	// need to call this twice so it can perform the diff
-	err = server.gatherData(&acc, false, true, true, true, []string{"local"})
+	err = server.gatherData(&acc, false)
 	require.NoError(t, err)
 
-	for key := range defaultStats {
-		require.True(t, acc.HasInt64Field("mongodb", key))
-	}
-}
-
-func TestPoolStatsVersionCompatibility(t *testing.T) {
-	tests := []struct {
-		name            string
-		version         string
-		expectedCommand string
-		err             bool
-	}{
-		{
-			name:            "mongodb v3",
-			version:         "3.0.0",
-			expectedCommand: "shardConnPoolStats",
-		},
-		{
-			name:            "mongodb v4",
-			version:         "4.0.0",
-			expectedCommand: "shardConnPoolStats",
-		},
-		{
-			name:            "mongodb v5",
-			version:         "5.0.0",
-			expectedCommand: "connPoolStats",
-		},
-		{
-			name:    "invalid version",
-			version: "v4",
-			err:     true,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			command, err := poolStatsCommand(test.version)
-			require.Equal(t, test.expectedCommand, command)
-			if test.err {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-		})
+	for key := range DefaultStats {
+		assert.True(t, acc.HasInt64Field("mongodb", key))
 	}
 }

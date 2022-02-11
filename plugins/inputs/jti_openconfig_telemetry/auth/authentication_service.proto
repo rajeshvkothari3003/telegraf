@@ -25,7 +25,6 @@
 syntax = "proto3";
 
 package authentication;
-option go_package = ".;authentication";
 
 // The Login service definition.
 service Login {

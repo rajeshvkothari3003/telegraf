@@ -1,7 +1,6 @@
 package ifname
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/internal/snmp"
 	"github.com/influxdata/telegraf/plugins/common/parallel"
 	si "github.com/influxdata/telegraf/plugins/inputs/snmp"
@@ -81,7 +81,7 @@ type valType = nameMap
 type mapFunc func(agent string) (nameMap, error)
 type makeTableFunc func(string) (*si.Table, error)
 
-type sigMap map[string]chan struct{}
+type sigMap map[string](chan struct{})
 
 type IfName struct {
 	SourceTag string `toml:"tag"`
@@ -97,19 +97,24 @@ type IfName struct {
 
 	Log telegraf.Logger `toml:"-"`
 
-	ifTable  *si.Table
-	ifXTable *si.Table
+	ifTable  *si.Table `toml:"-"`
+	ifXTable *si.Table `toml:"-"`
 
-	cache    *TTLCache
-	lock     sync.Mutex
-	parallel parallel.Parallel
-	sigs     sigMap
+	lock  sync.Mutex `toml:"-"`
+	cache *TTLCache  `toml:"-"`
 
-	getMapRemote mapFunc
-	makeTable    makeTableFunc
+	parallel parallel.Parallel    `toml:"-"`
+	acc      telegraf.Accumulator `toml:"-"`
+
+	getMapRemote mapFunc       `toml:"-"`
+	makeTable    makeTableFunc `toml:"-"`
+
+	gsBase snmp.GosnmpWrapper `toml:"-"`
+
+	sigs sigMap `toml:"-"`
 }
 
-const minRetry = 5 * time.Minute
+const minRetry time.Duration = 5 * time.Minute
 
 func (d *IfName) SampleConfig() string {
 	return sampleConfig
@@ -127,10 +132,6 @@ func (d *IfName) Init() error {
 	d.cache = &c
 
 	d.sigs = make(sigMap)
-
-	if _, err := snmp.NewWrapper(d.ClientConfig); err != nil {
-		return fmt.Errorf("parsing SNMP client config: %w", err)
-	}
 
 	return nil
 }
@@ -157,7 +158,7 @@ func (d *IfName) addTag(metric telegraf.Metric) error {
 	for {
 		m, age, err := d.getMap(agent)
 		if err != nil {
-			return fmt.Errorf("couldn't retrieve the table of interface names for %s: %w", agent, err)
+			return fmt.Errorf("couldn't retrieve the table of interface names: %w", err)
 		}
 
 		name, found := m[num]
@@ -171,7 +172,7 @@ func (d *IfName) addTag(metric telegraf.Metric) error {
 		// the interface we're interested in.  If the entry is old
 		// enough, retrieve it from the agent once more.
 		if age < minRetry {
-			return fmt.Errorf("interface number %d isn't in the table of interface names on %s", num, agent)
+			return fmt.Errorf("interface number %d isn't in the table of interface names", num)
 		}
 
 		if firstTime {
@@ -181,7 +182,7 @@ func (d *IfName) addTag(metric telegraf.Metric) error {
 		}
 
 		// not found, cache hit, retrying
-		return fmt.Errorf("missing interface but couldn't retrieve table for %v", agent)
+		return fmt.Errorf("missing interface but couldn't retrieve table")
 	}
 }
 
@@ -192,21 +193,27 @@ func (d *IfName) invalidate(agent string) {
 }
 
 func (d *IfName) Start(acc telegraf.Accumulator) error {
-	var err error
+	d.acc = acc
 
-	d.ifTable, err = d.makeTable("1.3.6.1.2.1.2.2.1.2")
+	var err error
+	d.gsBase, err = snmp.NewWrapper(d.ClientConfig)
 	if err != nil {
-		return fmt.Errorf("preparing ifTable: %v", err)
+		return fmt.Errorf("parsing SNMP client config: %w", err)
 	}
-	d.ifXTable, err = d.makeTable("1.3.6.1.2.1.31.1.1.1.1")
+
+	d.ifTable, err = d.makeTable("IF-MIB::ifTable")
 	if err != nil {
-		return fmt.Errorf("preparing ifXTable: %v", err)
+		return fmt.Errorf("looking up ifTable in local MIB: %w", err)
+	}
+	d.ifXTable, err = d.makeTable("IF-MIB::ifXTable")
+	if err != nil {
+		return fmt.Errorf("looking up ifXTable in local MIB: %w", err)
 	}
 
 	fn := func(m telegraf.Metric) []telegraf.Metric {
 		err := d.addTag(m)
 		if err != nil {
-			d.Log.Debugf("Error adding tag: %v", err)
+			d.Log.Debugf("Error adding tag %v", err)
 		}
 		return []telegraf.Metric{m}
 	}
@@ -219,7 +226,7 @@ func (d *IfName) Start(acc telegraf.Accumulator) error {
 	return nil
 }
 
-func (d *IfName) Add(metric telegraf.Metric, _ telegraf.Accumulator) error {
+func (d *IfName) Add(metric telegraf.Metric, acc telegraf.Accumulator) error {
 	d.parallel.Enqueue(metric)
 	return nil
 }
@@ -293,27 +300,27 @@ func (d *IfName) getMap(agent string) (entry nameMap, age time.Duration, err err
 }
 
 func (d *IfName) getMapRemoteNoMock(agent string) (nameMap, error) {
-	gs, err := snmp.NewWrapper(d.ClientConfig)
+	gs := d.gsBase
+	err := gs.SetAgent(agent)
 	if err != nil {
-		return nil, fmt.Errorf("parsing SNMP client config: %w", err)
-	}
-
-	if err = gs.SetAgent(agent); err != nil {
 		return nil, fmt.Errorf("parsing agent tag: %w", err)
 	}
 
-	if err = gs.Connect(); err != nil {
+	err = gs.Connect()
+	if err != nil {
 		return nil, fmt.Errorf("connecting when fetching interface names: %w", err)
 	}
 
 	//try ifXtable and ifName first.  if that fails, fall back to
 	//ifTable and ifDescr
 	var m nameMap
-	if m, err = buildMap(gs, d.ifXTable); err == nil {
+	m, err = buildMap(gs, d.ifXTable, "ifName")
+	if err == nil {
 		return m, nil
 	}
 
-	if m, err = buildMap(gs, d.ifTable); err == nil {
+	m, err = buildMap(gs, d.ifTable, "ifDescr")
+	if err == nil {
 		return m, nil
 	}
 
@@ -331,7 +338,7 @@ func init() {
 			ClientConfig: snmp.ClientConfig{
 				Retries:        3,
 				MaxRepetitions: 10,
-				Timeout:        config.Duration(5 * time.Second),
+				Timeout:        internal.Duration{Duration: 5 * time.Second},
 				Version:        2,
 				Community:      "public",
 			},
@@ -340,14 +347,11 @@ func init() {
 	})
 }
 
-func makeTableNoMock(oid string) (*si.Table, error) {
+func makeTableNoMock(tableName string) (*si.Table, error) {
 	var err error
 	tab := si.Table{
-		Name:       "ifTable",
+		Oid:        tableName,
 		IndexAsTag: true,
-		Fields: []si.Field{
-			{Oid: oid, Name: "ifName"},
-		},
 	}
 
 	err = tab.Init()
@@ -359,7 +363,7 @@ func makeTableNoMock(oid string) (*si.Table, error) {
 	return &tab, nil
 }
 
-func buildMap(gs snmp.GosnmpWrapper, tab *si.Table) (nameMap, error) {
+func buildMap(gs snmp.GosnmpWrapper, tab *si.Table, column string) (nameMap, error) {
 	var err error
 
 	rtab, err := tab.Build(gs, true)
@@ -384,13 +388,13 @@ func buildMap(gs snmp.GosnmpWrapper, tab *si.Table) (nameMap, error) {
 		if err != nil {
 			return nil, fmt.Errorf("index tag isn't a uint")
 		}
-		nameIf, ok := v.Fields["ifName"]
+		nameIf, ok := v.Fields[column]
 		if !ok {
-			return nil, errors.New("ifName field is missing")
+			return nil, fmt.Errorf("field %s is missing", column)
 		}
 		name, ok := nameIf.(string)
 		if !ok {
-			return nil, errors.New("ifName field isn't a string")
+			return nil, fmt.Errorf("field %s isn't a string", column)
 		}
 
 		t[i] = name

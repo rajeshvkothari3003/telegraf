@@ -5,42 +5,32 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gopcua/opcua"
 	"github.com/gopcua/opcua/ua"
-
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/config"
-	"github.com/influxdata/telegraf/internal/choice"
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"github.com/influxdata/telegraf/selfstat"
 )
 
-type OpcuaWorkarounds struct {
-	AdditionalValidStatusCodes []string `toml:"additional_valid_status_codes"`
-}
-
 // OpcUA type
 type OpcUA struct {
-	MetricName     string           `toml:"name"`
-	Endpoint       string           `toml:"endpoint"`
-	SecurityPolicy string           `toml:"security_policy"`
-	SecurityMode   string           `toml:"security_mode"`
-	Certificate    string           `toml:"certificate"`
-	PrivateKey     string           `toml:"private_key"`
-	Username       string           `toml:"username"`
-	Password       string           `toml:"password"`
-	Timestamp      string           `toml:"timestamp"`
-	AuthMethod     string           `toml:"auth_method"`
-	ConnectTimeout config.Duration  `toml:"connect_timeout"`
-	RequestTimeout config.Duration  `toml:"request_timeout"`
-	RootNodes      []NodeSettings   `toml:"nodes"`
-	Groups         []GroupSettings  `toml:"group"`
-	Workarounds    OpcuaWorkarounds `toml:"workarounds"`
-	Log            telegraf.Logger  `toml:"-"`
+	MetricName     string          `toml:"name"`
+	Endpoint       string          `toml:"endpoint"`
+	SecurityPolicy string          `toml:"security_policy"`
+	SecurityMode   string          `toml:"security_mode"`
+	Certificate    string          `toml:"certificate"`
+	PrivateKey     string          `toml:"private_key"`
+	Username       string          `toml:"username"`
+	Password       string          `toml:"password"`
+	AuthMethod     string          `toml:"auth_method"`
+	ConnectTimeout config.Duration `toml:"connect_timeout"`
+	RequestTimeout config.Duration `toml:"request_timeout"`
+	RootNodes      []NodeSettings  `toml:"nodes"`
+	Groups         []GroupSettings `toml:"group"`
 
 	nodes       []Node
 	nodeData    []OPCData
@@ -56,9 +46,9 @@ type OpcUA struct {
 	client *opcua.Client
 	req    *ua.ReadRequest
 	opts   []opcua.Option
-	codes  []ua.StatusCode
 }
 
+// OPCTag type
 type NodeSettings struct {
 	FieldName      string     `toml:"name"`
 	Namespace      string     `toml:"namespace"`
@@ -86,12 +76,12 @@ type GroupSettings struct {
 
 // OPCData type
 type OPCData struct {
-	TagName    string
-	Value      interface{}
-	Quality    ua.StatusCode
-	ServerTime time.Time
-	SourceTime time.Time
-	DataType   ua.TypeID
+	TagName   string
+	Value     interface{}
+	Quality   ua.StatusCode
+	TimeStamp string
+	Time      string
+	DataType  ua.TypeID
 }
 
 // ConnectionState used for constants
@@ -145,12 +135,6 @@ const sampleConfig = `
   ## Password. Required for auth_method = "UserName"
   # password = ""
   #
-  ## Option to select the metric timestamp to use. Valid options are:
-  ##     "gather" -- uses the time of receiving the data in telegraf
-  ##     "server" -- uses the timestamp provided by the server
-  ##     "source" -- uses the timestamp provided by the source
-  # timestamp = "gather"
-  #
   ## Node ID configuration
   ## name              - field name to use in the output
   ## namespace         - OPC UA namespace of the node (integer value 0 thru 3)
@@ -187,11 +171,6 @@ const sampleConfig = `
   #  {name="", namespace="", identifier_type="", identifier=""},
   #  {name="", namespace="", identifier_type="", identifier=""},
   #]
-
-  ## Enable workarounds required by some devices to work correctly
-  # [inputs.opcua.workarounds]
-    ## Set additional valid status codes, StatusOK (0x0) is always considered valid
-    # additional_valid_status_codes = ["0xC0"]
 `
 
 // Description will appear directly above the plugin definition in the config file
@@ -208,12 +187,7 @@ func (o *OpcUA) SampleConfig() string {
 func (o *OpcUA) Init() error {
 	o.state = Disconnected
 
-	err := choice.Check(o.Timestamp, []string{"", "gather", "server", "source"})
-	if err != nil {
-		return err
-	}
-
-	err = o.validateEndpoint()
+	err := o.validateEndpoint()
 	if err != nil {
 		return err
 	}
@@ -224,11 +198,6 @@ func (o *OpcUA) Init() error {
 	}
 
 	err = o.setupOptions()
-	if err != nil {
-		return err
-	}
-
-	err = o.setupWorkarounds()
 	if err != nil {
 		return err
 	}
@@ -259,14 +228,14 @@ func (o *OpcUA) validateEndpoint() error {
 	//search security policy type
 	switch o.SecurityPolicy {
 	case "None", "Basic128Rsa15", "Basic256", "Basic256Sha256", "auto":
-		// Valid security policy type - do nothing.
+		break
 	default:
 		return fmt.Errorf("invalid security type '%s' in '%s'", o.SecurityPolicy, o.MetricName)
 	}
 	//search security mode type
 	switch o.SecurityMode {
 	case "None", "Sign", "SignAndEncrypt", "auto":
-		// Valid security mode type - do nothing.
+		break
 	default:
 		return fmt.Errorf("invalid security type '%s' in '%s'", o.SecurityMode, o.MetricName)
 	}
@@ -359,18 +328,10 @@ func newMP(n *Node) metricParts {
 	var sb strings.Builder
 	for i, key := range keys {
 		if i != 0 {
-			// Writes to a string-builder will always succeed
-			//nolint:errcheck,revive
 			sb.WriteString(", ")
 		}
-		// Writes to a string-builder will always succeed
-		//nolint:errcheck,revive
 		sb.WriteString(key)
-		// Writes to a string-builder will always succeed
-		//nolint:errcheck,revive
 		sb.WriteString("=")
-		// Writes to a string-builder will always succeed
-		//nolint:errcheck,revive
 		sb.WriteString(n.metricTags[key])
 	}
 	x := metricParts{
@@ -401,7 +362,7 @@ func (o *OpcUA) validateOPCTags() error {
 		//search identifier type
 		switch node.tag.IdentifierType {
 		case "s", "i", "g", "b":
-			// Valid identifier type - do nothing.
+			break
 		default:
 			return fmt.Errorf("invalid identifier type '%s' in '%s'", node.tag.IdentifierType, node.tag.FieldName)
 		}
@@ -436,11 +397,7 @@ func Connect(o *OpcUA) error {
 		o.state = Connecting
 
 		if o.client != nil {
-			if err := o.client.Close(); err != nil {
-				// Only log the error but to not bail-out here as this prevents
-				// reconnections for multiple parties (see e.g. #9523).
-				o.Log.Errorf("Closing connection failed: %v", err)
-			}
+			o.client.CloseSession()
 		}
 
 		o.client = opcua.NewClient(o.Endpoint, o.opts...)
@@ -475,48 +432,21 @@ func Connect(o *OpcUA) error {
 }
 
 func (o *OpcUA) setupOptions() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(o.ConnectTimeout))
-	defer cancel()
 	// Get a list of the endpoints for our target server
-	endpoints, err := opcua.GetEndpoints(ctx, o.Endpoint)
+	endpoints, err := opcua.GetEndpoints(o.Endpoint)
 	if err != nil {
 		return err
 	}
 
 	if o.Certificate == "" && o.PrivateKey == "" {
 		if o.SecurityPolicy != "None" || o.SecurityMode != "None" {
-			o.Certificate, o.PrivateKey, err = generateCert("urn:telegraf:gopcua:client", 2048, o.Certificate, o.PrivateKey, 365*24*time.Hour)
-			if err != nil {
-				return err
-			}
+			o.Certificate, o.PrivateKey = generateCert("urn:telegraf:gopcua:client", 2048, o.Certificate, o.PrivateKey, (365 * 24 * time.Hour))
 		}
 	}
 
-	o.opts, err = o.generateClientOpts(endpoints)
+	o.opts = generateClientOpts(endpoints, o.Certificate, o.PrivateKey, o.SecurityPolicy, o.SecurityMode, o.AuthMethod, o.Username, o.Password, time.Duration(o.RequestTimeout))
 
-	return err
-}
-
-func (o *OpcUA) setupWorkarounds() error {
-	if len(o.Workarounds.AdditionalValidStatusCodes) != 0 {
-		for _, c := range o.Workarounds.AdditionalValidStatusCodes {
-			val, err := strconv.ParseInt(c, 0, 32) // setting 32 bits to allow for safe conversion
-			if err != nil {
-				return err
-			}
-			o.codes = append(o.codes, ua.StatusCode(uint32(val)))
-		}
-	}
 	return nil
-}
-
-func (o *OpcUA) checkStatusCode(code ua.StatusCode) bool {
-	for _, val := range o.codes {
-		if val == code {
-			return true
-		}
-	}
-	return false
 }
 
 func (o *OpcUA) getData() error {
@@ -527,12 +457,8 @@ func (o *OpcUA) getData() error {
 	}
 	o.ReadSuccess.Incr(1)
 	for i, d := range resp.Results {
-		o.nodeData[i].Quality = d.Status
-		if !o.checkStatusCode(d.Status) {
-			mp := newMP(&o.nodes[i])
-			o.Log.Errorf("status not OK for node '%s'(metric name '%s', tags '%s')",
-				mp.fieldName, mp.metricName, mp.tags)
-			continue
+		if d.Status != ua.StatusOK {
+			return fmt.Errorf("status not OK: %v", d.Status)
 		}
 		o.nodeData[i].TagName = o.nodes[i].tag.FieldName
 		if d.Value != nil {
@@ -540,8 +466,8 @@ func (o *OpcUA) getData() error {
 			o.nodeData[i].DataType = d.Value.Type()
 		}
 		o.nodeData[i].Quality = d.Status
-		o.nodeData[i].ServerTime = d.ServerTimestamp
-		o.nodeData[i].SourceTime = d.SourceTimestamp
+		o.nodeData[i].TimeStamp = d.ServerTimestamp.String()
+		o.nodeData[i].Time = d.SourceTimestamp.String()
 	}
 	return nil
 }
@@ -564,7 +490,6 @@ func disconnect(o *OpcUA) error {
 	case "opc.tcp":
 		o.state = Disconnected
 		o.client.Close()
-		o.client = nil
 		return nil
 	default:
 		return fmt.Errorf("invalid controller")
@@ -587,34 +512,22 @@ func (o *OpcUA) Gather(acc telegraf.Accumulator) error {
 	err := o.getData()
 	if err != nil && o.state == Connected {
 		o.state = Disconnected
-		// Ignore returned error to not mask the original problem
-		//nolint:errcheck,revive
 		disconnect(o)
 		return err
 	}
 
 	for i, n := range o.nodes {
-		if o.checkStatusCode(o.nodeData[i].Quality) {
-			fields := make(map[string]interface{})
-			tags := map[string]string{
-				"id": n.idStr,
-			}
-			for k, v := range n.metricTags {
-				tags[k] = v
-			}
-
-			fields[o.nodeData[i].TagName] = o.nodeData[i].Value
-			fields["Quality"] = strings.TrimSpace(fmt.Sprint(o.nodeData[i].Quality))
-
-			switch o.Timestamp {
-			case "server":
-				acc.AddFields(n.metricName, fields, tags, o.nodeData[i].ServerTime)
-			case "source":
-				acc.AddFields(n.metricName, fields, tags, o.nodeData[i].SourceTime)
-			default:
-				acc.AddFields(n.metricName, fields, tags)
-			}
+		fields := make(map[string]interface{})
+		tags := map[string]string{
+			"id": n.idStr,
 		}
+		for k, v := range n.metricTags {
+			tags[k] = v
+		}
+
+		fields[o.nodeData[i].TagName] = o.nodeData[i].Value
+		fields["Quality"] = strings.TrimSpace(fmt.Sprint(o.nodeData[i].Quality))
+		acc.AddFields(n.metricName, fields, tags)
 	}
 	return nil
 }
@@ -627,13 +540,11 @@ func init() {
 			Endpoint:       "opc.tcp://localhost:4840",
 			SecurityPolicy: "auto",
 			SecurityMode:   "auto",
-			Timestamp:      "gather",
 			RequestTimeout: config.Duration(5 * time.Second),
 			ConnectTimeout: config.Duration(10 * time.Second),
 			Certificate:    "/etc/telegraf/cert.pem",
 			PrivateKey:     "/etc/telegraf/key.pem",
 			AuthMethod:     "Anonymous",
-			codes:          []ua.StatusCode{ua.StatusOK},
 		}
 	})
 }

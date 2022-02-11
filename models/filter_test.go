@@ -15,10 +15,11 @@ func TestFilter_ApplyEmpty(t *testing.T) {
 	require.NoError(t, f.Compile())
 	require.False(t, f.IsActive())
 
-	m := metric.New("m",
+	m, err := metric.New("m",
 		map[string]string{},
 		map[string]interface{}{"value": int64(1)},
 		time.Now())
+	require.NoError(t, err)
 	require.True(t, f.Select(m))
 }
 
@@ -36,10 +37,11 @@ func TestFilter_ApplyTagsDontPass(t *testing.T) {
 	require.NoError(t, f.Compile())
 	require.True(t, f.IsActive())
 
-	m := metric.New("m",
+	m, err := metric.New("m",
 		map[string]string{"cpu": "cpu-total"},
 		map[string]interface{}{"value": int64(1)},
 		time.Now())
+	require.NoError(t, err)
 	require.False(t, f.Select(m))
 }
 
@@ -51,13 +53,14 @@ func TestFilter_ApplyDeleteFields(t *testing.T) {
 	require.NoError(t, f.Compile())
 	require.True(t, f.IsActive())
 
-	m := metric.New("m",
+	m, err := metric.New("m",
 		map[string]string{},
 		map[string]interface{}{
 			"value":  int64(1),
 			"value2": int64(2),
 		},
 		time.Now())
+	require.NoError(t, err)
 	require.True(t, f.Select(m))
 	f.Modify(m)
 	require.Equal(t, map[string]interface{}{"value2": int64(2)}, m.Fields())
@@ -71,13 +74,14 @@ func TestFilter_ApplyDeleteAllFields(t *testing.T) {
 	require.NoError(t, f.Compile())
 	require.True(t, f.IsActive())
 
-	m := metric.New("m",
+	m, err := metric.New("m",
 		map[string]string{},
 		map[string]interface{}{
 			"value":  int64(1),
 			"value2": int64(2),
 		},
 		time.Now())
+	require.NoError(t, err)
 	require.True(t, f.Select(m))
 	f.Modify(m)
 	require.Len(t, m.FieldList(), 0)
@@ -328,13 +332,14 @@ func TestFilter_TagDrop(t *testing.T) {
 }
 
 func TestFilter_FilterTagsNoMatches(t *testing.T) {
-	m := metric.New("m",
+	m, err := metric.New("m",
 		map[string]string{
 			"host":  "localhost",
 			"mytag": "foobar",
 		},
 		map[string]interface{}{"value": int64(1)},
 		time.Now())
+	require.NoError(t, err)
 	f := Filter{
 		TagExclude: []string{"nomatch"},
 	}
@@ -356,13 +361,14 @@ func TestFilter_FilterTagsNoMatches(t *testing.T) {
 }
 
 func TestFilter_FilterTagsMatches(t *testing.T) {
-	m := metric.New("m",
+	m, err := metric.New("m",
 		map[string]string{
 			"host":  "localhost",
 			"mytag": "foobar",
 		},
 		map[string]interface{}{"value": int64(1)},
 		time.Now())
+	require.NoError(t, err)
 	f := Filter{
 		TagExclude: []string{"ho*"},
 	}
@@ -373,13 +379,14 @@ func TestFilter_FilterTagsMatches(t *testing.T) {
 		"mytag": "foobar",
 	}, m.Tags())
 
-	m = metric.New("m",
+	m, err = metric.New("m",
 		map[string]string{
 			"host":  "localhost",
 			"mytag": "foobar",
 		},
 		map[string]interface{}{"value": int64(1)},
 		time.Now())
+	require.NoError(t, err)
 	f = Filter{
 		TagInclude: []string{"my*"},
 	}
@@ -395,6 +402,7 @@ func TestFilter_FilterTagsMatches(t *testing.T) {
 // both parameters were defined
 // see: https://github.com/influxdata/telegraf/issues/2860
 func TestFilter_FilterNamePassAndDrop(t *testing.T) {
+
 	inputData := []string{"name1", "name2", "name3", "name4"}
 	expectedResult := []bool{false, true, false, false}
 
@@ -414,6 +422,7 @@ func TestFilter_FilterNamePassAndDrop(t *testing.T) {
 // both parameters were defined
 // see: https://github.com/influxdata/telegraf/issues/2860
 func TestFilter_FilterFieldPassAndDrop(t *testing.T) {
+
 	inputData := []string{"field1", "field2", "field3", "field4"}
 	expectedResult := []bool{false, true, false, false}
 
@@ -470,6 +479,7 @@ func TestFilter_FilterTagsPassAndDrop(t *testing.T) {
 	for i, tag := range inputData {
 		require.Equal(t, f.shouldTagsPass(tag), expectedResult[i])
 	}
+
 }
 
 func BenchmarkFilter(b *testing.B) {

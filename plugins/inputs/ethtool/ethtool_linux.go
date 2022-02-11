@@ -1,24 +1,20 @@
-//go:build linux
 // +build linux
 
 package ethtool
 
 import (
 	"net"
-	"regexp"
-	"strings"
 	"sync"
-
-	"github.com/pkg/errors"
-	ethtoolLib "github.com/safchain/ethtool"
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/filter"
 	"github.com/influxdata/telegraf/plugins/inputs"
+	"github.com/pkg/errors"
+	"github.com/safchain/ethtool"
 )
 
 type CommandEthtool struct {
-	ethtool *ethtoolLib.Ethtool
+	ethtool *ethtool.Ethtool
 }
 
 func (e *Ethtool) Gather(acc telegraf.Accumulator) error {
@@ -83,51 +79,10 @@ func (e *Ethtool) gatherEthtoolStats(iface net.Interface, acc telegraf.Accumulat
 
 	fields[fieldInterfaceUp] = e.interfaceUp(iface)
 	for k, v := range stats {
-		fields[e.normalizeKey(k)] = v
+		fields[k] = v
 	}
 
 	acc.AddFields(pluginName, fields, tags)
-}
-
-// normalize key string; order matters to avoid replacing whitespace with
-// underscores, then trying to trim those same underscores. Likewise with
-// camelcase before trying to lower case things.
-func (e *Ethtool) normalizeKey(key string) string {
-	// must trim whitespace or this will have a leading _
-	if inStringSlice(e.NormalizeKeys, "snakecase") {
-		key = camelCase2SnakeCase(strings.TrimSpace(key))
-	}
-	// must occur before underscore, otherwise nothing to trim
-	if inStringSlice(e.NormalizeKeys, "trim") {
-		key = strings.TrimSpace(key)
-	}
-	if inStringSlice(e.NormalizeKeys, "lower") {
-		key = strings.ToLower(key)
-	}
-	if inStringSlice(e.NormalizeKeys, "underscore") {
-		key = strings.ReplaceAll(key, " ", "_")
-	}
-
-	return key
-}
-
-func camelCase2SnakeCase(value string) string {
-	matchFirstCap := regexp.MustCompile("(.)([A-Z][a-z]+)")
-	matchAllCap := regexp.MustCompile("([a-z0-9])([A-Z])")
-
-	snake := matchFirstCap.ReplaceAllString(value, "${1}_${2}")
-	snake = matchAllCap.ReplaceAllString(snake, "${1}_${2}")
-	return strings.ToLower(snake)
-}
-
-func inStringSlice(slice []string, value string) bool {
-	for _, item := range slice {
-		if item == value {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (e *Ethtool) interfaceUp(iface net.Interface) bool {
@@ -143,7 +98,7 @@ func (c *CommandEthtool) Init() error {
 		return nil
 	}
 
-	e, err := ethtoolLib.NewEthtool()
+	e, err := ethtool.NewEthtool()
 	if err == nil {
 		c.ethtool = e
 	}

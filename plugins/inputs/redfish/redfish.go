@@ -3,7 +3,7 @@ package redfish
 import (
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -73,7 +73,7 @@ type Chassis struct {
 type Power struct {
 	PowerSupplies []struct {
 		Name                 string
-		MemberID             string
+		MemberId             string
 		PowerInputWatts      *float64
 		PowerCapacityWatts   *float64
 		PowerOutputWatts     *float64
@@ -83,7 +83,7 @@ type Power struct {
 	}
 	Voltages []struct {
 		Name                   string
-		MemberID               string
+		MemberId               string
 		ReadingVolts           *float64
 		UpperThresholdCritical *float64
 		UpperThresholdFatal    *float64
@@ -96,7 +96,7 @@ type Power struct {
 type Thermal struct {
 	Fans []struct {
 		Name                   string
-		MemberID               string
+		MemberId               string
 		Reading                *int64
 		ReadingUnits           *string
 		UpperThresholdCritical *int64
@@ -107,7 +107,7 @@ type Thermal struct {
 	}
 	Temperatures []struct {
 		Name                   string
-		MemberID               string
+		MemberId               string
 		ReadingCelsius         *float64
 		UpperThresholdCritical *float64
 		UpperThresholdFatal    *float64
@@ -176,8 +176,8 @@ func (r *Redfish) Init() error {
 	return nil
 }
 
-func (r *Redfish) getData(address string, payload interface{}) error {
-	req, err := http.NewRequest("GET", address, nil)
+func (r *Redfish) getData(url string, payload interface{}) error {
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func (r *Redfish) getData(address string, payload interface{}) error {
 			r.Address)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -276,7 +276,7 @@ func (r *Redfish) Gather(acc telegraf.Accumulator) error {
 
 		for _, j := range thermal.Temperatures {
 			tags := map[string]string{}
-			tags["member_id"] = j.MemberID
+			tags["member_id"] = j.MemberId
 			tags["address"] = address
 			tags["name"] = j.Name
 			tags["source"] = system.Hostname
@@ -301,7 +301,7 @@ func (r *Redfish) Gather(acc telegraf.Accumulator) error {
 		for _, j := range thermal.Fans {
 			tags := map[string]string{}
 			fields := make(map[string]interface{})
-			tags["member_id"] = j.MemberID
+			tags["member_id"] = j.MemberId
 			tags["address"] = address
 			tags["name"] = j.Name
 			tags["source"] = system.Hostname
@@ -333,7 +333,7 @@ func (r *Redfish) Gather(acc telegraf.Accumulator) error {
 
 		for _, j := range power.PowerSupplies {
 			tags := map[string]string{}
-			tags["member_id"] = j.MemberID
+			tags["member_id"] = j.MemberId
 			tags["address"] = address
 			tags["name"] = j.Name
 			tags["source"] = system.Hostname
@@ -357,7 +357,7 @@ func (r *Redfish) Gather(acc telegraf.Accumulator) error {
 
 		for _, j := range power.Voltages {
 			tags := map[string]string{}
-			tags["member_id"] = j.MemberID
+			tags["member_id"] = j.MemberId
 			tags["address"] = address
 			tags["name"] = j.Name
 			tags["source"] = system.Hostname

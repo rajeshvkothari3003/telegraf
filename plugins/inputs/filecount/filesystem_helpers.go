@@ -69,4 +69,5 @@ func (f fakeFileSystem) Stat(name string) (os.FileInfo, error) {
 		return fakeInfo, nil
 	}
 	return nil, &os.PathError{Op: "Stat", Path: name, Err: errors.New("No such file or directory")}
+
 }

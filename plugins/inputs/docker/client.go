@@ -7,11 +7,11 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/swarm"
-	dockerClient "github.com/docker/docker/client"
+	docker "github.com/docker/docker/client"
 )
 
 var (
-	version        = "1.24" // https://docs.docker.com/engine/api/
+	version        = "1.21" // 1.24 is when server first started returning its version
 	defaultHeaders = map[string]string{"User-Agent": "engine-api-cli-1.0"}
 )
 
@@ -23,11 +23,10 @@ type Client interface {
 	ServiceList(ctx context.Context, options types.ServiceListOptions) ([]swarm.Service, error)
 	TaskList(ctx context.Context, options types.TaskListOptions) ([]swarm.Task, error)
 	NodeList(ctx context.Context, options types.NodeListOptions) ([]swarm.Node, error)
-	Close() error
 }
 
 func NewEnvClient() (Client, error) {
-	client, err := dockerClient.NewClientWithOpts(dockerClient.FromEnv)
+	client, err := docker.NewClientWithOpts(docker.FromEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -40,11 +39,11 @@ func NewClient(host string, tlsConfig *tls.Config) (Client, error) {
 	}
 	httpClient := &http.Client{Transport: transport}
 
-	client, err := dockerClient.NewClientWithOpts(
-		dockerClient.WithHTTPHeaders(defaultHeaders),
-		dockerClient.WithHTTPClient(httpClient),
-		dockerClient.WithVersion(version),
-		dockerClient.WithHost(host))
+	client, err := docker.NewClientWithOpts(
+		docker.WithHTTPHeaders(defaultHeaders),
+		docker.WithHTTPClient(httpClient),
+		docker.WithVersion(version),
+		docker.WithHost(host))
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +52,7 @@ func NewClient(host string, tlsConfig *tls.Config) (Client, error) {
 }
 
 type SocketClient struct {
-	client *dockerClient.Client
+	client *docker.Client
 }
 
 func (c *SocketClient) Info(ctx context.Context) (types.Info, error) {
@@ -76,7 +75,4 @@ func (c *SocketClient) TaskList(ctx context.Context, options types.TaskListOptio
 }
 func (c *SocketClient) NodeList(ctx context.Context, options types.NodeListOptions) ([]swarm.Node, error) {
 	return c.client.NodeList(ctx, options)
-}
-func (c *SocketClient) Close() error {
-	return c.client.Close()
 }

@@ -1,4 +1,3 @@
-//go:build !windows
 // +build !windows
 
 // bcache doesn't aim for Windows
@@ -7,7 +6,7 @@ package bcache
 
 import (
 	"errors"
-	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -84,7 +83,7 @@ func (b *Bcache) gatherBcache(bdev string, acc telegraf.Accumulator) error {
 	if len(metrics) == 0 {
 		return errors.New("can't read any stats file")
 	}
-	file, err := os.ReadFile(bdev + "/dirty_data")
+	file, err := ioutil.ReadFile(bdev + "/dirty_data")
 	if err != nil {
 		return err
 	}
@@ -96,7 +95,7 @@ func (b *Bcache) gatherBcache(bdev string, acc telegraf.Accumulator) error {
 
 	for _, path := range metrics {
 		key := filepath.Base(path)
-		file, err := os.ReadFile(path)
+		file, err := ioutil.ReadFile(path)
 		rawValue := strings.TrimSpace(string(file))
 		if err != nil {
 			return err
@@ -129,7 +128,7 @@ func (b *Bcache) Gather(acc telegraf.Accumulator) error {
 	}
 	bdevs, _ := filepath.Glob(bcachePath + "/*/bdev*")
 	if len(bdevs) < 1 {
-		return errors.New("can't find any bcache device")
+		return errors.New("Can't find any bcache device")
 	}
 	for _, bdev := range bdevs {
 		if restrictDevs {
@@ -138,9 +137,7 @@ func (b *Bcache) Gather(acc telegraf.Accumulator) error {
 				continue
 			}
 		}
-		if err := b.gatherBcache(bdev, acc); err != nil {
-			return fmt.Errorf("gathering bcache failed: %v", err)
-		}
+		b.gatherBcache(bdev, acc)
 	}
 	return nil
 }

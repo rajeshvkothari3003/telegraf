@@ -9,9 +9,10 @@ import (
 
 var (
 	ErrEOF              = errors.New("EOF")
-	ErrInvalidTimestamp = errors.New("invalid timestamp")
+	ErrInvalidTimestamp = errors.New("Invalid timestamp")
 )
 
+// Interface for parsing line elements.
 type ElementParser interface {
 	parse(p *PointParser, pt *Point) error
 }
@@ -28,6 +29,9 @@ type TagParser struct{}
 type LoopedParser struct {
 	wrappedParser ElementParser
 	wsParser      *WhiteSpaceParser
+}
+type LiteralParser struct {
+	literal string
 }
 
 func (ep *NameParser) parse(p *PointParser, pt *Point) error {
@@ -104,6 +108,7 @@ func (ep *TimestampParser) parse(p *PointParser, pt *Point) error {
 }
 
 func setTimestamp(pt *Point, ts int64, numDigits int) error {
+
 	if numDigits == 19 {
 		// nanoseconds
 		ts = ts / 1e9
@@ -115,10 +120,11 @@ func setTimestamp(pt *Point, ts int64, numDigits int) error {
 		ts = ts / 1e3
 	} else if numDigits != 10 {
 		// must be in seconds, return error if not 0
-		if ts != 0 {
+		if ts == 0 {
+			ts = getCurrentTime()
+		} else {
 			return ErrInvalidTimestamp
 		}
-		ts = getCurrentTime()
 	}
 	pt.Timestamp = ts
 	return nil
@@ -163,7 +169,7 @@ func (ep *TagParser) parse(p *PointParser, pt *Point) error {
 	return nil
 }
 
-func (ep *WhiteSpaceParser) parse(p *PointParser, _ *Point) error {
+func (ep *WhiteSpaceParser) parse(p *PointParser, pt *Point) error {
 	tok := Ws
 	for tok != EOF && tok == Ws {
 		tok, _ = p.scan()
@@ -176,6 +182,18 @@ func (ep *WhiteSpaceParser) parse(p *PointParser, _ *Point) error {
 		return nil
 	}
 	p.unscan()
+	return nil
+}
+
+func (ep *LiteralParser) parse(p *PointParser, pt *Point) error {
+	l, err := parseLiteral(p)
+	if err != nil {
+		return err
+	}
+
+	if l != ep.literal {
+		return fmt.Errorf("found %s, expected %s", l, ep.literal)
+	}
 	return nil
 }
 

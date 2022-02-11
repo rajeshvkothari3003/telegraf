@@ -32,8 +32,8 @@ type Redis struct {
 
 	Log telegraf.Logger
 
-	clients   []Client
-	connected bool
+	clients     []Client
+	initialized bool
 }
 
 type Client interface {
@@ -201,13 +201,9 @@ var sampleConfig = `
 
   ## Optional. Specify redis commands to retrieve values
   # [[inputs.redis.commands]]
-  #   # The command to run where each argument is a separate element 
-  #   command = ["get", "sample-key"]
-  #   # The field to store the result in
-  #   field = "sample-key-value"
-  #   # The type of the result
-  #   # Can be "string", "integer", or "float"
-  #   type = "string"
+  # command = ["get", "sample-key"]
+  # field = "sample-key-value"
+  # type = "string"
 
   ## specify server password
   # password = "s#cr@t%"
@@ -234,18 +230,8 @@ var Tracking = map[string]string{
 	"role":              "replication_role",
 }
 
-func (r *Redis) Init() error {
-	for _, command := range r.Commands {
-		if command.Type != "string" && command.Type != "integer" && command.Type != "float" {
-			return fmt.Errorf(`unknown result type: expected one of "string", "integer", "float"; got %q`, command.Type)
-		}
-	}
-
-	return nil
-}
-
-func (r *Redis) connect() error {
-	if r.connected {
+func (r *Redis) init() error {
+	if r.initialized {
 		return nil
 	}
 
@@ -313,15 +299,15 @@ func (r *Redis) connect() error {
 		}
 	}
 
-	r.connected = true
+	r.initialized = true
 	return nil
 }
 
 // Reads stats from all configured servers accumulates stats.
 // Returns one of the errors encountered while gather stats (if any).
 func (r *Redis) Gather(acc telegraf.Accumulator) error {
-	if !r.connected {
-		err := r.connect()
+	if !r.initialized {
+		err := r.init()
 		if err != nil {
 			return err
 		}
@@ -347,10 +333,6 @@ func (r *Redis) gatherCommandValues(client Client, acc telegraf.Accumulator) err
 	for _, command := range r.Commands {
 		val, err := client.Do(command.Type, command.Command...)
 		if err != nil {
-			if strings.Contains(err.Error(), "unexpected type=") {
-				return fmt.Errorf("could not get command result: %s", err)
-			}
-
 			return err
 		}
 

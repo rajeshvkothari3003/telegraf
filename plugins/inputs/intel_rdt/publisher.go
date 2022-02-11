@@ -1,29 +1,14 @@
-//go:build !windows
 // +build !windows
 
 package intel_rdt
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
 	"github.com/influxdata/telegraf"
 )
-
-type parsedCoresMeasurement struct {
-	cores  string
-	values []float64
-	time   time.Time
-}
-
-type parsedProcessMeasurement struct {
-	process string
-	cores   string
-	values  []float64
-	time    time.Time
-}
 
 // Publisher for publish new RDT metrics to telegraf accumulator
 type Publisher struct {
@@ -33,6 +18,7 @@ type Publisher struct {
 	BufferChanProcess chan processMeasurement
 	BufferChanCores   chan string
 	errChan           chan error
+	stopChan          chan bool
 }
 
 func NewPublisher(acc telegraf.Accumulator, log telegraf.Logger, shortenedMetrics bool) Publisher {
@@ -64,48 +50,50 @@ func (p *Publisher) publish(ctx context.Context) {
 }
 
 func (p *Publisher) publishCores(measurement string) {
-	parsedCoresMeasurement, err := parseCoresMeasurement(measurement)
+	coresString, values, timestamp, err := parseCoresMeasurement(measurement)
 	if err != nil {
 		p.errChan <- err
 	}
-	p.addToAccumulatorCores(parsedCoresMeasurement)
+	p.addToAccumulatorCores(coresString, values, timestamp)
+	return
 }
 
 func (p *Publisher) publishProcess(measurement processMeasurement) {
-	parsedProcessMeasurement, err := parseProcessesMeasurement(measurement)
+	process, coresString, values, timestamp, err := parseProcessesMeasurement(measurement)
 	if err != nil {
 		p.errChan <- err
 	}
-	p.addToAccumulatorProcesses(parsedProcessMeasurement)
+	p.addToAccumulatorProcesses(process, coresString, values, timestamp)
+	return
 }
 
-func parseCoresMeasurement(measurements string) (parsedCoresMeasurement, error) {
+func parseCoresMeasurement(measurements string) (string, []float64, time.Time, error) {
 	var values []float64
-	splitCSV, err := splitCSVLineIntoValues(measurements)
+	timeValue, metricsValues, cores, err := splitCSVLineIntoValues(measurements)
 	if err != nil {
-		return parsedCoresMeasurement{}, err
+		return "", nil, time.Time{}, err
 	}
-	timestamp, err := parseTime(splitCSV.timeValue)
+	timestamp, err := parseTime(timeValue)
 	if err != nil {
-		return parsedCoresMeasurement{}, err
+		return "", nil, time.Time{}, err
 	}
 	// change string slice to one string and separate it by coma
-	coresString := strings.Join(splitCSV.coreOrPIDsValues, ",")
+	coresString := strings.Join(cores, ",")
 	// trim unwanted quotes
 	coresString = strings.Trim(coresString, "\"")
 
-	for _, metric := range splitCSV.metricsValues {
+	for _, metric := range metricsValues {
 		parsedValue, err := parseFloat(metric)
 		if err != nil {
-			return parsedCoresMeasurement{}, err
+			return "", nil, time.Time{}, err
 		}
 		values = append(values, parsedValue)
 	}
-	return parsedCoresMeasurement{coresString, values, timestamp}, nil
+	return coresString, values, timestamp, nil
 }
 
-func (p *Publisher) addToAccumulatorCores(measurement parsedCoresMeasurement) {
-	for i, value := range measurement.values {
+func (p *Publisher) addToAccumulatorCores(cores string, metricsValues []float64, timestamp time.Time) {
+	for i, value := range metricsValues {
 		if p.shortenedMetrics {
 			//0: "IPC"
 			//1: "LLC_Misses"
@@ -116,47 +104,41 @@ func (p *Publisher) addToAccumulatorCores(measurement parsedCoresMeasurement) {
 		tags := map[string]string{}
 		fields := make(map[string]interface{})
 
-		tags["cores"] = measurement.cores
+		tags["cores"] = cores
 		tags["name"] = pqosMetricOrder[i]
 		fields["value"] = value
 
-		p.acc.AddFields("rdt_metric", fields, tags, measurement.time)
+		p.acc.AddFields("rdt_metric", fields, tags, timestamp)
 	}
 }
 
-func parseProcessesMeasurement(measurement processMeasurement) (parsedProcessMeasurement, error) {
-	splitCSV, err := splitCSVLineIntoValues(measurement.measurement)
+func parseProcessesMeasurement(measurement processMeasurement) (string, string, []float64, time.Time, error) {
+	var values []float64
+	timeValue, metricsValues, coreOrPidsValues, pids, err := parseProcessMeasurement(measurement.measurement)
 	if err != nil {
-		return parsedProcessMeasurement{}, err
+		return "", "", nil, time.Time{}, err
 	}
-	pids, err := findPIDsInMeasurement(measurement.measurement)
+	timestamp, err := parseTime(timeValue)
 	if err != nil {
-		return parsedProcessMeasurement{}, err
-	}
-	lenOfPIDs := len(strings.Split(pids, ","))
-	if lenOfPIDs > len(splitCSV.coreOrPIDsValues) {
-		return parsedProcessMeasurement{}, errors.New("detected more pids (quoted) than actual number of pids in csv line")
-	}
-	timestamp, err := parseTime(splitCSV.timeValue)
-	if err != nil {
-		return parsedProcessMeasurement{}, err
+		return "", "", nil, time.Time{}, err
 	}
 	actualProcess := measurement.name
-	cores := strings.Trim(strings.Join(splitCSV.coreOrPIDsValues[lenOfPIDs:], ","), `"`)
+	lenOfPids := len(strings.Split(pids, ","))
+	cores := coreOrPidsValues[lenOfPids:]
+	coresString := strings.Trim(strings.Join(cores, ","), `"`)
 
-	var values []float64
-	for _, metric := range splitCSV.metricsValues {
+	for _, metric := range metricsValues {
 		parsedValue, err := parseFloat(metric)
 		if err != nil {
-			return parsedProcessMeasurement{}, err
+			return "", "", nil, time.Time{}, err
 		}
 		values = append(values, parsedValue)
 	}
-	return parsedProcessMeasurement{actualProcess, cores, values, timestamp}, nil
+	return actualProcess, coresString, values, timestamp, nil
 }
 
-func (p *Publisher) addToAccumulatorProcesses(measurement parsedProcessMeasurement) {
-	for i, value := range measurement.values {
+func (p *Publisher) addToAccumulatorProcesses(process string, cores string, metricsValues []float64, timestamp time.Time) {
+	for i, value := range metricsValues {
 		if p.shortenedMetrics {
 			//0: "IPC"
 			//1: "LLC_Misses"
@@ -167,11 +149,23 @@ func (p *Publisher) addToAccumulatorProcesses(measurement parsedProcessMeasureme
 		tags := map[string]string{}
 		fields := make(map[string]interface{})
 
-		tags["process"] = measurement.process
-		tags["cores"] = measurement.cores
+		tags["process"] = process
+		tags["cores"] = cores
 		tags["name"] = pqosMetricOrder[i]
 		fields["value"] = value
 
-		p.acc.AddFields("rdt_metric", fields, tags, measurement.time)
+		p.acc.AddFields("rdt_metric", fields, tags, timestamp)
 	}
+}
+
+func parseProcessMeasurement(measurements string) (string, []string, []string, string, error) {
+	timeValue, metricsValues, coreOrPidsValues, err := splitCSVLineIntoValues(measurements)
+	if err != nil {
+		return "", nil, nil, "", err
+	}
+	pids, err := findPIDsInMeasurement(measurements)
+	if err != nil {
+		return "", nil, nil, "", err
+	}
+	return timeValue, metricsValues, coreOrPidsValues, pids, nil
 }

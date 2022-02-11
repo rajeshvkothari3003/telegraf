@@ -2,7 +2,7 @@ package testutil
 
 import (
 	"fmt"
-	"io"
+	"io/ioutil"
 	"os"
 	"path"
 
@@ -72,18 +72,6 @@ func (p *pki) ClientKeyPath() string {
 	return path.Join(p.path, "clientkey.pem")
 }
 
-func (p *pki) ClientCertAndKeyPath() string {
-	return path.Join(p.path, "client.pem")
-}
-
-func (p *pki) ClientEncKeyPath() string {
-	return path.Join(p.path, "clientkeyenc.pem")
-}
-
-func (p *pki) ClientCertAndEncKeyPath() string {
-	return path.Join(p.path, "clientenc.pem")
-}
-
 func (p *pki) ReadServerCert() string {
 	return readCertificate(p.ServerCertPath())
 }
@@ -100,16 +88,12 @@ func (p *pki) ServerKeyPath() string {
 	return path.Join(p.path, "serverkey.pem")
 }
 
-func (p *pki) ServerCertAndKeyPath() string {
-	return path.Join(p.path, "server.pem")
-}
-
 func readCertificate(filename string) string {
 	file, err := os.Open(filename)
 	if err != nil {
 		panic(fmt.Sprintf("opening %q: %v", filename, err))
 	}
-	octets, err := io.ReadAll(file)
+	octets, err := ioutil.ReadAll(file)
 	if err != nil {
 		panic(fmt.Sprintf("reading %q: %v", filename, err))
 	}

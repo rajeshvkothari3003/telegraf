@@ -22,5 +22,4 @@ def apply(metric):
         result = Metric("cpu_diff")
         # Set the field "value" to the difference between the value of the last metric and the current one
         result.fields["value"] = last.fields["value"] - metric.fields["value"]
-        result.time = metric.time
         return result

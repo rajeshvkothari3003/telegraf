@@ -100,4 +100,6 @@ func SetLoggerOnPlugin(i interface{}, log telegraf.Logger) {
 		log.Debugf("Plugin %q defines a 'Log' field on its struct of an unexpected type %q. Expected telegraf.Logger",
 			valI.Type().Name(), field.Type().String())
 	}
+
+	return
 }

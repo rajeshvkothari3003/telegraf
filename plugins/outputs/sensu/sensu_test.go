@@ -3,7 +3,7 @@ package sensu
 import (
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -17,58 +17,58 @@ import (
 )
 
 func TestResolveEventEndpointUrl(t *testing.T) {
-	agentAPIURL := "http://127.0.0.1:3031"
-	backendAPIURL := "http://127.0.0.1:8080"
+	agentApiUrl := "http://127.0.0.1:3031"
+	backendApiUrl := "http://127.0.0.1:8080"
 	entityNamespace := "test-namespace"
 	emptyString := ""
 	tests := []struct {
 		name                string
 		plugin              *Sensu
-		expectedEndpointURL string
+		expectedEndpointUrl string
 	}{
 		{
 			name: "agent event endpoint",
 			plugin: &Sensu{
-				AgentAPIURL: &agentAPIURL,
+				AgentApiUrl: &agentApiUrl,
 				Log:         testutil.Logger{},
 			},
-			expectedEndpointURL: "http://127.0.0.1:3031/events",
+			expectedEndpointUrl: "http://127.0.0.1:3031/events",
 		},
 		{
 			name: "backend event endpoint with default namespace",
 			plugin: &Sensu{
-				AgentAPIURL:   &agentAPIURL,
-				BackendAPIURL: &backendAPIURL,
+				AgentApiUrl:   &agentApiUrl,
+				BackendApiUrl: &backendApiUrl,
 				Log:           testutil.Logger{},
 			},
-			expectedEndpointURL: "http://127.0.0.1:8080/api/core/v2/namespaces/default/events",
+			expectedEndpointUrl: "http://127.0.0.1:8080/api/core/v2/namespaces/default/events",
 		},
 		{
 			name: "backend event endpoint with namespace declared",
 			plugin: &Sensu{
-				AgentAPIURL:   &agentAPIURL,
-				BackendAPIURL: &backendAPIURL,
+				AgentApiUrl:   &agentApiUrl,
+				BackendApiUrl: &backendApiUrl,
 				Entity: &SensuEntity{
 					Namespace: &entityNamespace,
 				},
 				Log: testutil.Logger{},
 			},
-			expectedEndpointURL: "http://127.0.0.1:8080/api/core/v2/namespaces/test-namespace/events",
+			expectedEndpointUrl: "http://127.0.0.1:8080/api/core/v2/namespaces/test-namespace/events",
 		},
 		{
-			name: "agent event endpoint due to empty AgentAPIURL",
+			name: "agent event endpoint due to empty AgentApiUrl",
 			plugin: &Sensu{
-				AgentAPIURL: &emptyString,
+				AgentApiUrl: &emptyString,
 				Log:         testutil.Logger{},
 			},
-			expectedEndpointURL: "http://127.0.0.1:3031/events",
+			expectedEndpointUrl: "http://127.0.0.1:3031/events",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.plugin.setEndpointURL()
+			err := tt.plugin.setEndpointUrl()
 			require.Equal(t, err, error(nil))
-			require.Equal(t, tt.expectedEndpointURL, tt.plugin.EndpointURL)
+			require.Equal(t, tt.expectedEndpointUrl, tt.plugin.EndpointUrl)
 		})
 	}
 }
@@ -77,23 +77,23 @@ func TestConnectAndWrite(t *testing.T) {
 	ts := httptest.NewServer(http.NotFoundHandler())
 	defer ts.Close()
 
-	testURL := fmt.Sprintf("http://%s", ts.Listener.Addr().String())
-	testAPIKey := "a0b1c2d3-e4f5-g6h7-i8j9-k0l1m2n3o4p5"
+	testUrl := fmt.Sprintf("http://%s", ts.Listener.Addr().String())
+	testApiKey := "a0b1c2d3-e4f5-g6h7-i8j9-k0l1m2n3o4p5"
 	testCheck := "telegraf"
 	testEntity := "entity1"
 	testNamespace := "default"
 	testHandler := "influxdb"
 	testTagName := "myTagName"
 	testTagValue := "myTagValue"
-	expectedAuthHeader := fmt.Sprintf("Key %s", testAPIKey)
-	expectedURL := fmt.Sprintf("/api/core/v2/namespaces/%s/events", testNamespace)
+	expectedAuthHeader := fmt.Sprintf("Key %s", testApiKey)
+	expectedUrl := fmt.Sprintf("/api/core/v2/namespaces/%s/events", testNamespace)
 	expectedPointName := "cpu"
 	expectedPointValue := float64(42)
 
 	plugin := &Sensu{
-		AgentAPIURL:   nil,
-		BackendAPIURL: &testURL,
-		APIKey:        &testAPIKey,
+		AgentApiUrl:   nil,
+		BackendApiUrl: &testUrl,
+		ApiKey:        &testApiKey,
 		Check: &SensuCheck{
 			Name: &testCheck,
 		},
@@ -115,10 +115,10 @@ func TestConnectAndWrite(t *testing.T) {
 
 	t.Run("write", func(t *testing.T) {
 		ts.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.Equal(t, expectedURL, r.URL.String())
-			require.Equal(t, expectedAuthHeader, r.Header.Get("Authorization"))
+			require.Equal(t, expectedUrl, r.URL.String())
+			require.Equal(t, expectedAuthHeader, (r.Header.Get("Authorization")))
 			// let's make sure what we received is a valid Sensu event that contains all of the expected data
-			body, err := io.ReadAll(r.Body)
+			body, err := ioutil.ReadAll(r.Body)
 			require.NoError(t, err)
 			receivedEvent := &corev2.Event{}
 			err = json.Unmarshal(body, receivedEvent)

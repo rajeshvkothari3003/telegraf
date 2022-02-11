@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"log"
 	"strconv"
 	"sync"
 	"time"
@@ -25,7 +26,6 @@ type Point struct {
 type WavefrontParser struct {
 	parsers     *sync.Pool
 	defaultTags map[string]string
-	Log         telegraf.Logger `toml:"-"`
 }
 
 // PointParser is a thread-unsafe parser and must be kept in a pool.
@@ -42,7 +42,7 @@ type PointParser struct {
 	parent   *WavefrontParser
 }
 
-// NewWavefrontElements returns a slice of ElementParser's for the Graphite format
+// Returns a slice of ElementParser's for the Graphite format
 func NewWavefrontElements() []ElementParser {
 	var elements []ElementParser
 	wsParser := WhiteSpaceParser{}
@@ -90,6 +90,7 @@ func (p *WavefrontParser) Parse(buf []byte) ([]telegraf.Metric, error) {
 }
 
 func (p *PointParser) Parse(buf []byte) ([]telegraf.Metric, error) {
+
 	// parse even if the buffer begins with a newline
 	buf = bytes.TrimPrefix(buf, []byte("\n"))
 	// add newline to end if not exists:
@@ -132,6 +133,7 @@ func (p *WavefrontParser) SetDefaultTags(tags map[string]string) {
 }
 
 func (p *PointParser) convertPointToTelegrafMetric(points []Point) ([]telegraf.Metric, error) {
+
 	metrics := make([]telegraf.Metric, 0)
 
 	for _, point := range points {
@@ -152,7 +154,10 @@ func (p *PointParser) convertPointToTelegrafMetric(points []Point) ([]telegraf.M
 		}
 		fields["value"] = v
 
-		m := metric.New(point.Name, tags, fields, time.Unix(point.Timestamp, 0))
+		m, err := metric.New(point.Name, tags, fields, time.Unix(point.Timestamp, 0))
+		if err != nil {
+			return nil, err
+		}
 
 		metrics = append(metrics, m)
 	}
@@ -200,15 +205,16 @@ func (p *PointParser) unscan() {
 func (p *PointParser) unscanTokens(n int) {
 	if n > MaxBufferSize {
 		// just log for now
-		p.parent.Log.Infof("Cannot unscan more than %d tokens", MaxBufferSize)
+		log.Printf("cannot unscan more than %d tokens", MaxBufferSize)
 	}
 	p.buf.n += n
 }
 
 func (p *PointParser) reset(buf []byte) {
+
 	// reset the scan buffer and write new byte
 	p.scanBuf.Reset()
-	p.scanBuf.Write(buf) //nolint:revive // from buffer.go: "err is always nil"
+	p.scanBuf.Write(buf)
 
 	if p.s == nil {
 		p.s = NewScanner(&p.scanBuf)

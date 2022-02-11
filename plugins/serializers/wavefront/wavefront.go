@@ -12,12 +12,11 @@ import (
 
 // WavefrontSerializer : WavefrontSerializer struct
 type WavefrontSerializer struct {
-	Prefix                   string
-	UseStrict                bool
-	SourceOverride           []string
-	DisablePrefixConversions bool
-	scratch                  buffer
-	mu                       sync.Mutex // buffer mutex
+	Prefix         string
+	UseStrict      bool
+	SourceOverride []string
+	scratch        buffer
+	mu             sync.Mutex // buffer mutex
 }
 
 // catch many of the invalid chars that could appear in a metric or tag name
@@ -41,17 +40,16 @@ var tagValueReplacer = strings.NewReplacer("\"", "\\\"", "*", "-")
 
 var pathReplacer = strings.NewReplacer("_", ".")
 
-func NewSerializer(prefix string, useStrict bool, sourceOverride []string, disablePrefixConversion bool) (*WavefrontSerializer, error) {
+func NewSerializer(prefix string, useStrict bool, sourceOverride []string) (*WavefrontSerializer, error) {
 	s := &WavefrontSerializer{
-		Prefix:                   prefix,
-		UseStrict:                useStrict,
-		SourceOverride:           sourceOverride,
-		DisablePrefixConversions: disablePrefixConversion,
+		Prefix:         prefix,
+		UseStrict:      useStrict,
+		SourceOverride: sourceOverride,
 	}
 	return s, nil
 }
 
-func (s *WavefrontSerializer) serializeMetric(m telegraf.Metric) {
+func (s *WavefrontSerializer) serialize(buf *buffer, m telegraf.Metric) {
 	const metricSeparator = "."
 
 	for fieldName, value := range m.Fields() {
@@ -69,9 +67,7 @@ func (s *WavefrontSerializer) serializeMetric(m telegraf.Metric) {
 			name = sanitizedChars.Replace(name)
 		}
 
-		if !s.DisablePrefixConversions {
-			name = pathReplacer.Replace(name)
-		}
+		name = pathReplacer.Replace(name)
 
 		metricValue, valid := buildValue(value, name)
 		if !valid {
@@ -94,7 +90,7 @@ func (s *WavefrontSerializer) serializeMetric(m telegraf.Metric) {
 func (s *WavefrontSerializer) Serialize(m telegraf.Metric) ([]byte, error) {
 	s.mu.Lock()
 	s.scratch.Reset()
-	s.serializeMetric(m)
+	s.serialize(&s.scratch, m)
 	out := s.scratch.Copy()
 	s.mu.Unlock()
 	return out, nil
@@ -104,7 +100,7 @@ func (s *WavefrontSerializer) SerializeBatch(metrics []telegraf.Metric) ([]byte,
 	s.mu.Lock()
 	s.scratch.Reset()
 	for _, m := range metrics {
-		s.serializeMetric(m)
+		s.serialize(&s.scratch, m)
 	}
 	out := s.scratch.Copy()
 	s.mu.Unlock()
@@ -204,7 +200,7 @@ func (b *buffer) WriteString(s string) {
 	*b = append(*b, s...)
 }
 
-// WriteChar has this name instead of WriteByte because the 'stdmethods' check
+// This is named WriteChar instead of WriteByte because the 'stdmethods' check
 // of 'go vet' wants WriteByte to have the signature:
 //
 // 	func (b *buffer) WriteByte(c byte) error { ... }

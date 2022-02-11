@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/common/tls"
 	"github.com/influxdata/telegraf/plugins/inputs"
 )
@@ -63,7 +63,7 @@ type Tomcat struct {
 	URL      string
 	Username string
 	Password string
-	Timeout  config.Duration
+	Timeout  internal.Duration
 	tls.ClientConfig
 
 	client  *http.Client
@@ -131,9 +131,7 @@ func (s *Tomcat) Gather(acc telegraf.Accumulator) error {
 	}
 
 	var status TomcatStatus
-	if err := xml.NewDecoder(resp.Body).Decode(&status); err != nil {
-		return err
-	}
+	xml.NewDecoder(resp.Body).Decode(&status)
 
 	// add tomcat_jvm_memory measurements
 	tcm := map[string]interface{}{
@@ -199,7 +197,7 @@ func (s *Tomcat) createHTTPClient() (*http.Client, error) {
 		Transport: &http.Transport{
 			TLSClientConfig: tlsConfig,
 		},
-		Timeout: time.Duration(s.Timeout),
+		Timeout: s.Timeout.Duration,
 	}
 
 	return client, nil
@@ -211,7 +209,7 @@ func init() {
 			URL:      "http://127.0.0.1:8080/manager/status/all?XML=true",
 			Username: "tomcat",
 			Password: "s3cret",
-			Timeout:  config.Duration(5 * time.Second),
+			Timeout:  internal.Duration{Duration: 5 * time.Second},
 		}
 	})
 }

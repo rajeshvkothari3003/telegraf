@@ -6,25 +6,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMsgPackTime32(t *testing.T) {
 	// Maximum of 4 bytes encodable time
 	var sec int64 = 0xFFFFFFFF
-	var nsec int64
+	var nsec int64 = 0
 	t1 := MessagePackTime{time: time.Unix(sec, nsec)}
 
-	require.Equal(t, t1.Len(), 4)
+	assert.Equal(t, t1.Len(), 4)
 
 	buf := make([]byte, t1.Len())
-	require.NoError(t, t1.MarshalBinaryTo(buf))
+	assert.NoError(t, t1.MarshalBinaryTo(buf))
 
 	t2 := new(MessagePackTime)
-	err := t2.UnmarshalBinary(buf)
-	require.NoError(t, err)
+	t2.UnmarshalBinary(buf)
 
-	require.Equal(t, t1.time, t2.time)
+	assert.Equal(t, t1.time, t2.time)
 }
 
 func TestMsgPackTime64(t *testing.T) {
@@ -33,16 +32,15 @@ func TestMsgPackTime64(t *testing.T) {
 	var nsec int64 = 999999999
 	t1 := MessagePackTime{time: time.Unix(sec, nsec)}
 
-	require.Equal(t, t1.Len(), 8)
+	assert.Equal(t, t1.Len(), 8)
 
 	buf := make([]byte, t1.Len())
-	require.NoError(t, t1.MarshalBinaryTo(buf))
+	assert.NoError(t, t1.MarshalBinaryTo(buf))
 
 	t2 := new(MessagePackTime)
-	err := t2.UnmarshalBinary(buf)
-	require.NoError(t, err)
+	t2.UnmarshalBinary(buf)
 
-	require.Equal(t, t1.time, t2.time)
+	assert.Equal(t, t1.time, t2.time)
 }
 
 func TestMsgPackTime96(t *testing.T) {
@@ -51,28 +49,26 @@ func TestMsgPackTime96(t *testing.T) {
 	var nsec int64 = 111111111
 	t1 := MessagePackTime{time: time.Unix(sec, nsec)}
 
-	require.Equal(t, t1.Len(), 12)
+	assert.Equal(t, t1.Len(), 12)
 
 	buf := make([]byte, t1.Len())
-	require.NoError(t, t1.MarshalBinaryTo(buf))
+	assert.NoError(t, t1.MarshalBinaryTo(buf))
 
 	t2 := new(MessagePackTime)
-	err := t2.UnmarshalBinary(buf)
-	require.NoError(t, err)
+	t2.UnmarshalBinary(buf)
 
-	require.True(t, t1.time.Equal(t2.time))
+	assert.True(t, t1.time.Equal(t2.time))
 
 	// Testing the default value: 0001-01-01T00:00:00Z
 	t1 = MessagePackTime{}
 
-	require.Equal(t, t1.Len(), 12)
-	require.NoError(t, t1.MarshalBinaryTo(buf))
+	assert.Equal(t, t1.Len(), 12)
+	assert.NoError(t, t1.MarshalBinaryTo(buf))
 
 	t2 = new(MessagePackTime)
-	err = t2.UnmarshalBinary(buf)
-	require.NoError(t, err)
+	t2.UnmarshalBinary(buf)
 
-	require.True(t, t1.time.Equal(t2.time))
+	assert.True(t, t1.time.Equal(t2.time))
 }
 
 func TestMsgPackTimeEdgeCases(t *testing.T) {
@@ -142,6 +138,6 @@ func TestMsgPackTimeEdgeCases(t *testing.T) {
 
 		buf = buf[:0]
 		buf, _ = m.MarshalMsg(buf)
-		require.Equal(t, expected[i], buf[12:len(buf)-14])
+		assert.Equal(t, expected[i], buf[12:len(buf)-14])
 	}
 }

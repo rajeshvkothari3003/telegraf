@@ -1,4 +1,3 @@
-//go:build !windows
 // +build !windows
 
 //revive:disable-next-line:var-naming

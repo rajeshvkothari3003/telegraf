@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/selfstat"
 	"github.com/influxdata/telegraf/testutil"
 )
@@ -20,7 +20,9 @@ func newListener() *InfluxDBV2Listener {
 		acc:          &testutil.NopAccumulator{},
 		bytesRecv:    selfstat.Register("influxdb_v2_listener", "bytes_received", map[string]string{}),
 		writesServed: selfstat.Register("influxdb_v2_listener", "writes_served", map[string]string{}),
-		MaxBodySize:  config.Size(defaultMaxBodySize),
+		MaxBodySize: internal.Size{
+			Size: defaultMaxBodySize,
+		},
 	}
 	return listener
 }

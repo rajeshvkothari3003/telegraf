@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPostgresqlGeneratesMetricsIntegration(t *testing.T) {
@@ -71,27 +71,27 @@ func TestPostgresqlGeneratesMetricsIntegration(t *testing.T) {
 	metricsCounted := 0
 
 	for _, metric := range intMetrics {
-		require.True(t, acc.HasInt64Field("postgresql", metric))
+		assert.True(t, acc.HasInt64Field("postgresql", metric))
 		metricsCounted++
 	}
 
 	for _, metric := range int32Metrics {
-		require.True(t, acc.HasInt32Field("postgresql", metric))
+		assert.True(t, acc.HasInt32Field("postgresql", metric))
 		metricsCounted++
 	}
 
 	for _, metric := range floatMetrics {
-		require.True(t, acc.HasFloatField("postgresql", metric))
+		assert.True(t, acc.HasFloatField("postgresql", metric))
 		metricsCounted++
 	}
 
 	for _, metric := range stringMetrics {
-		require.True(t, acc.HasStringField("postgresql", metric))
+		assert.True(t, acc.HasStringField("postgresql", metric))
 		metricsCounted++
 	}
 
-	require.True(t, metricsCounted > 0)
-	require.Equal(t, len(floatMetrics)+len(intMetrics)+len(int32Metrics)+len(stringMetrics), metricsCounted)
+	assert.True(t, metricsCounted > 0)
+	assert.Equal(t, len(floatMetrics)+len(intMetrics)+len(int32Metrics)+len(stringMetrics), metricsCounted)
 }
 
 func TestPostgresqlTagsMetricsWithDatabaseNameIntegration(t *testing.T) {
@@ -117,7 +117,7 @@ func TestPostgresqlTagsMetricsWithDatabaseNameIntegration(t *testing.T) {
 	point, ok := acc.Get("postgresql")
 	require.True(t, ok)
 
-	require.Equal(t, "postgres", point.Tags["db"])
+	assert.Equal(t, "postgres", point.Tags["db"])
 }
 
 func TestPostgresqlDefaultsToAllDatabasesIntegration(t *testing.T) {
@@ -150,7 +150,7 @@ func TestPostgresqlDefaultsToAllDatabasesIntegration(t *testing.T) {
 		}
 	}
 
-	require.True(t, found)
+	assert.True(t, found)
 }
 
 func TestPostgresqlIgnoresUnwantedColumnsIntegration(t *testing.T) {
@@ -172,7 +172,7 @@ func TestPostgresqlIgnoresUnwantedColumnsIntegration(t *testing.T) {
 	require.NoError(t, p.Gather(&acc))
 
 	for col := range p.IgnoredColumns() {
-		require.False(t, acc.HasMeasurement(col))
+		assert.False(t, acc.HasMeasurement(col))
 	}
 }
 
@@ -212,8 +212,8 @@ func TestPostgresqlDatabaseWhitelistTestIntegration(t *testing.T) {
 		}
 	}
 
-	require.True(t, foundTemplate0)
-	require.False(t, foundTemplate1)
+	assert.True(t, foundTemplate0)
+	assert.False(t, foundTemplate1)
 }
 
 func TestPostgresqlDatabaseBlacklistTestIntegration(t *testing.T) {
@@ -251,6 +251,6 @@ func TestPostgresqlDatabaseBlacklistTestIntegration(t *testing.T) {
 		}
 	}
 
-	require.False(t, foundTemplate0)
-	require.True(t, foundTemplate1)
+	assert.False(t, foundTemplate0)
+	assert.True(t, foundTemplate1)
 }

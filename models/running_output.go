@@ -56,6 +56,7 @@ type RunningOutput struct {
 }
 
 func NewRunningOutput(
+	name string,
 	output telegraf.Output,
 	config *OutputConfig,
 	batchSize int,
@@ -124,6 +125,7 @@ func (r *RunningOutput) Init() error {
 		if err != nil {
 			return err
 		}
+
 	}
 	return nil
 }

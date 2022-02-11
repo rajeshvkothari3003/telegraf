@@ -38,12 +38,8 @@ func TestDisqueGeneratesMetricsIntegration(t *testing.T) {
 				return
 			}
 
-			if _, err := fmt.Fprintf(c, "$%d\n", len(testOutput)); err != nil {
-				return
-			}
-			if _, err := c.Write([]byte(testOutput)); err != nil {
-				return
-			}
+			fmt.Fprintf(c, "$%d\n", len(testOutput))
+			c.Write([]byte(testOutput))
 		}
 	}()
 
@@ -108,12 +104,8 @@ func TestDisqueCanPullStatsFromMultipleServersIntegration(t *testing.T) {
 				return
 			}
 
-			if _, err := fmt.Fprintf(c, "$%d\n", len(testOutput)); err != nil {
-				return
-			}
-			if _, err := c.Write([]byte(testOutput)); err != nil {
-				return
-			}
+			fmt.Fprintf(c, "$%d\n", len(testOutput))
+			c.Write([]byte(testOutput))
 		}
 	}()
 

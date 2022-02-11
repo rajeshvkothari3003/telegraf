@@ -8,9 +8,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const nginxSampleResponse = `
@@ -33,7 +33,7 @@ func TestNginxTags(t *testing.T) {
 	for _, url1 := range urls {
 		addr, _ = url.Parse(url1)
 		tagMap := getTags(addr)
-		require.Contains(t, tagMap["server"], "localhost")
+		assert.Contains(t, tagMap["server"], "localhost")
 	}
 }
 
@@ -46,11 +46,10 @@ func TestNginxGeneratesMetrics(t *testing.T) {
 		} else if r.URL.Path == "/tengine_status" {
 			rsp = tengineSampleResponse
 		} else {
-			require.Fail(t, "Cannot handle request")
+			panic("Cannot handle request")
 		}
 
-		_, err := fmt.Fprintln(w, rsp)
-		require.NoError(t, err)
+		fmt.Fprintln(w, rsp)
 	}))
 	defer ts.Close()
 
@@ -65,8 +64,11 @@ func TestNginxGeneratesMetrics(t *testing.T) {
 	var accNginx testutil.Accumulator
 	var accTengine testutil.Accumulator
 
-	require.NoError(t, accNginx.GatherError(n.Gather))
-	require.NoError(t, accTengine.GatherError(nt.Gather))
+	errNginx := accNginx.GatherError(n.Gather)
+	errTengine := accTengine.GatherError(nt.Gather)
+
+	require.NoError(t, errNginx)
+	require.NoError(t, errTengine)
 
 	fieldsNginx := map[string]interface{}{
 		"active":   uint64(585),
@@ -89,7 +91,9 @@ func TestNginxGeneratesMetrics(t *testing.T) {
 	}
 
 	addr, err := url.Parse(ts.URL)
-	require.NoError(t, err)
+	if err != nil {
+		panic(err)
+	}
 
 	host, port, err := net.SplitHostPort(addr.Host)
 	if err != nil {

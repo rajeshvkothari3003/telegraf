@@ -1,14 +1,13 @@
 package topk
 
 import (
-	"time"
-
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/metric"
+	"time"
 )
 
 ///// Test set 1 /////
-var metric11 = metric.New(
+var metric11, _ = metric.New(
 	"m1",
 	map[string]string{"tag_name": "tag_value1"},
 	map[string]interface{}{
@@ -18,7 +17,7 @@ var metric11 = metric.New(
 	time.Now(),
 )
 
-var metric12 = metric.New(
+var metric12, _ = metric.New(
 	"m1",
 	map[string]string{"tag_name": "tag_value1"},
 	map[string]interface{}{
@@ -27,7 +26,7 @@ var metric12 = metric.New(
 	time.Now(),
 )
 
-var metric13 = metric.New(
+var metric13, _ = metric.New(
 	"m1",
 	map[string]string{"tag_name": "tag_value1"},
 	map[string]interface{}{
@@ -37,7 +36,7 @@ var metric13 = metric.New(
 	time.Now(),
 )
 
-var metric14 = metric.New(
+var metric14, _ = metric.New(
 	"m1",
 	map[string]string{"tag_name": "tag_value1"},
 	map[string]interface{}{
@@ -47,7 +46,7 @@ var metric14 = metric.New(
 	time.Now(),
 )
 
-var metric15 = metric.New(
+var metric15, _ = metric.New(
 	"m1",
 	map[string]string{"tag_name": "tag_value1"},
 	map[string]interface{}{
@@ -61,7 +60,7 @@ var metric15 = metric.New(
 var MetricsSet1 = []telegraf.Metric{metric11, metric12, metric13, metric14, metric15}
 
 ///// Test set 2 /////
-var metric21 = metric.New(
+var metric21, _ = metric.New(
 	"metric1",
 	map[string]string{
 		"id":   "1",
@@ -78,7 +77,7 @@ var metric21 = metric.New(
 	time.Now(),
 )
 
-var metric22 = metric.New(
+var metric22, _ = metric.New(
 	"metric1",
 	map[string]string{
 		"id":   "2",
@@ -94,7 +93,7 @@ var metric22 = metric.New(
 	time.Now(),
 )
 
-var metric23 = metric.New(
+var metric23, _ = metric.New(
 	"metric1",
 	map[string]string{
 		"id":   "3",
@@ -111,7 +110,7 @@ var metric23 = metric.New(
 	time.Now(),
 )
 
-var metric24 = metric.New(
+var metric24, _ = metric.New(
 	"metric2",
 	map[string]string{
 		"id":   "4",
@@ -127,7 +126,7 @@ var metric24 = metric.New(
 	time.Now(),
 )
 
-var metric25 = metric.New(
+var metric25, _ = metric.New(
 	"metric2",
 	map[string]string{
 		"id":   "5",
@@ -144,7 +143,7 @@ var metric25 = metric.New(
 	time.Now(),
 )
 
-var metric26 = metric.New(
+var metric26, _ = metric.New(
 	"metric2",
 	map[string]string{
 		"id":   "6",

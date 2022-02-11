@@ -2,17 +2,16 @@ package amqp
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"time"
 
-	"github.com/streadway/amqp"
-
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
 	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/common/tls"
 	"github.com/influxdata/telegraf/plugins/outputs"
 	"github.com/influxdata/telegraf/plugins/serializers"
+	"github.com/streadway/amqp"
 )
 
 const (
@@ -30,7 +29,7 @@ func (a *externalAuth) Mechanism() string {
 }
 
 func (a *externalAuth) Response() string {
-	return "\000"
+	return fmt.Sprintf("\000")
 }
 
 type AMQP struct {
@@ -52,7 +51,7 @@ type AMQP struct {
 	RetentionPolicy    string            `toml:"retention_policy"` // deprecated in 1.7; use headers
 	Precision          string            `toml:"precision"`        // deprecated; has no effect
 	Headers            map[string]string `toml:"headers"`
-	Timeout            config.Duration   `toml:"timeout"`
+	Timeout            internal.Duration `toml:"timeout"`
 	UseBatchFormat     bool              `toml:"use_batch_format"`
 	ContentEncoding    string            `toml:"content_encoding"`
 	Log                telegraf.Logger   `toml:"-"`
@@ -181,11 +180,11 @@ func (q *AMQP) SetSerializer(serializer serializers.Serializer) {
 
 func (q *AMQP) Connect() error {
 	if q.config == nil {
-		clientConfig, err := q.makeClientConfig()
+		config, err := q.makeClientConfig()
 		if err != nil {
 			return err
 		}
-		q.config = clientConfig
+		q.config = config
 	}
 
 	var err error
@@ -252,17 +251,14 @@ func (q *AMQP) Write(metrics []telegraf.Metric) error {
 		if err != nil {
 			// If this is the first attempt to publish and the connection is
 			// closed, try to reconnect and retry once.
-			//nolint: revive // Simplifying if-else with early return will reduce clarity
 			if aerr, ok := err.(*amqp.Error); first && ok && aerr == amqp.ErrClosed {
+				first = false
 				q.client = nil
 				err := q.publish(key, body)
 				if err != nil {
 					return err
 				}
 			} else {
-				if err := q.client.Close(); err != nil {
-					q.Log.Errorf("Closing connection failed: %v", err)
-				}
 				q.client = nil
 				return err
 			}
@@ -272,9 +268,7 @@ func (q *AMQP) Write(metrics []telegraf.Metric) error {
 
 	if q.sentMessages >= q.MaxMessages && q.MaxMessages > 0 {
 		q.Log.Debug("Sent MaxMessages; closing connection")
-		if err := q.client.Close(); err != nil {
-			q.Log.Errorf("Closing connection failed: %v", err)
-		}
+		q.client.Close()
 		q.client = nil
 	}
 
@@ -321,53 +315,52 @@ func (q *AMQP) serialize(metrics []telegraf.Metric) ([]byte, error) {
 }
 
 func (q *AMQP) makeClientConfig() (*ClientConfig, error) {
-	clientConfig := &ClientConfig{
+	config := &ClientConfig{
 		exchange:        q.Exchange,
 		exchangeType:    q.ExchangeType,
 		exchangePassive: q.ExchangePassive,
 		encoding:        q.ContentEncoding,
-		timeout:         time.Duration(q.Timeout),
-		log:             q.Log,
+		timeout:         q.Timeout.Duration,
 	}
 
 	switch q.ExchangeDurability {
 	case "transient":
-		clientConfig.exchangeDurable = false
+		config.exchangeDurable = false
 	default:
-		clientConfig.exchangeDurable = true
+		config.exchangeDurable = true
 	}
 
-	clientConfig.brokers = q.Brokers
-	if len(clientConfig.brokers) == 0 {
-		clientConfig.brokers = []string{q.URL}
+	config.brokers = q.Brokers
+	if len(config.brokers) == 0 {
+		config.brokers = []string{q.URL}
 	}
 
 	switch q.DeliveryMode {
 	case "transient":
-		clientConfig.deliveryMode = amqp.Transient
+		config.deliveryMode = amqp.Transient
 	case "persistent":
-		clientConfig.deliveryMode = amqp.Persistent
+		config.deliveryMode = amqp.Persistent
 	default:
-		clientConfig.deliveryMode = amqp.Transient
+		config.deliveryMode = amqp.Transient
 	}
 
 	if len(q.Headers) > 0 {
-		clientConfig.headers = make(amqp.Table, len(q.Headers))
+		config.headers = make(amqp.Table, len(q.Headers))
 		for k, v := range q.Headers {
-			clientConfig.headers[k] = v
+			config.headers[k] = v
 		}
 	} else {
 		// Copy deprecated fields into message header
-		clientConfig.headers = amqp.Table{
+		config.headers = amqp.Table{
 			"database":         q.Database,
 			"retention_policy": q.RetentionPolicy,
 		}
 	}
 
 	if len(q.ExchangeArguments) > 0 {
-		clientConfig.exchangeArguments = make(amqp.Table, len(q.ExchangeArguments))
+		config.exchangeArguments = make(amqp.Table, len(q.ExchangeArguments))
 		for k, v := range q.ExchangeArguments {
-			clientConfig.exchangeArguments[k] = v
+			config.exchangeArguments[k] = v
 		}
 	}
 
@@ -375,7 +368,7 @@ func (q *AMQP) makeClientConfig() (*ClientConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	clientConfig.tlsConfig = tlsConfig
+	config.tlsConfig = tlsConfig
 
 	var auth []amqp.Authentication
 	if strings.ToUpper(q.AuthMethod) == "EXTERNAL" {
@@ -388,13 +381,13 @@ func (q *AMQP) makeClientConfig() (*ClientConfig, error) {
 			},
 		}
 	}
-	clientConfig.auth = auth
+	config.auth = auth
 
-	return clientConfig, nil
+	return config, nil
 }
 
-func connect(clientConfig *ClientConfig) (Client, error) {
-	return Connect(clientConfig)
+func connect(config *ClientConfig) (Client, error) {
+	return Connect(config)
 }
 
 func init() {
@@ -405,7 +398,7 @@ func init() {
 			AuthMethod:      DefaultAuthMethod,
 			Database:        DefaultDatabase,
 			RetentionPolicy: DefaultRetentionPolicy,
-			Timeout:         config.Duration(time.Second * 5),
+			Timeout:         internal.Duration{Duration: time.Second * 5},
 			connect:         connect,
 		}
 	})

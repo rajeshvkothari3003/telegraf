@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type statServer struct{}
@@ -27,15 +27,13 @@ func (s statServer) serverSocket(l net.Listener) {
 		}
 
 		go func(c net.Conn) {
-			defer c.Close()
-
 			buf := make([]byte, 1024)
 			n, _ := c.Read(buf)
 
 			data := buf[:n]
 			if string(data) == "show stat\n" {
-				//nolint:errcheck,revive // we return anyway
 				c.Write([]byte(csvOutputSample))
+				c.Close()
 			}
 		}(conn)
 	}
@@ -47,18 +45,15 @@ func TestHaproxyGeneratesMetricsWithAuthentication(t *testing.T) {
 		username, password, ok := r.BasicAuth()
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
-			_, err := fmt.Fprint(w, "Unauthorized")
-			require.NoError(t, err)
+			fmt.Fprint(w, "Unauthorized")
 			return
 		}
 
 		if username == "user" && password == "password" {
-			_, err := fmt.Fprint(w, csvOutputSample)
-			require.NoError(t, err)
+			fmt.Fprint(w, csvOutputSample)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
-			_, err := fmt.Fprint(w, "Unauthorized")
-			require.NoError(t, err)
+			fmt.Fprint(w, "Unauthorized")
 		}
 	}))
 	defer ts.Close()
@@ -88,14 +83,13 @@ func TestHaproxyGeneratesMetricsWithAuthentication(t *testing.T) {
 		Servers: []string{ts.URL},
 	}
 
-	require.NoError(t, r.Gather(&acc))
+	r.Gather(&acc)
 	require.NotEmpty(t, acc.Errors)
 }
 
 func TestHaproxyGeneratesMetricsWithoutAuthentication(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := fmt.Fprint(w, csvOutputSample)
-		require.NoError(t, err)
+		fmt.Fprint(w, csvOutputSample)
 	}))
 	defer ts.Close()
 
@@ -105,7 +99,8 @@ func TestHaproxyGeneratesMetricsWithoutAuthentication(t *testing.T) {
 
 	var acc testutil.Accumulator
 
-	require.NoError(t, r.Gather(&acc))
+	err := r.Gather(&acc)
+	require.NoError(t, err)
 
 	tags := map[string]string{
 		"server": ts.Listener.Addr().String(),
@@ -126,7 +121,7 @@ func TestHaproxyGeneratesMetricsUsingSocket(t *testing.T) {
 	_badmask := filepath.Join(os.TempDir(), "test-fail-haproxy*.sock")
 
 	for i := 0; i < 5; i++ {
-		require.NoError(t, binary.Read(rand.Reader, binary.LittleEndian, &randomNumber))
+		binary.Read(rand.Reader, binary.LittleEndian, &randomNumber)
 		sockname := filepath.Join(os.TempDir(), fmt.Sprintf("test-haproxy%d.sock", randomNumber))
 
 		sock, err := net.Listen("unix", sockname)
@@ -135,7 +130,7 @@ func TestHaproxyGeneratesMetricsUsingSocket(t *testing.T) {
 		}
 
 		sockets[i] = sock
-		defer sock.Close() //nolint:revive // done on purpose, closing will be executed properly
+		defer sock.Close()
 
 		s := statServer{}
 		go s.serverSocket(sock)
@@ -166,7 +161,7 @@ func TestHaproxyGeneratesMetricsUsingSocket(t *testing.T) {
 	// This mask should not match any socket
 	r.Servers = []string{_badmask}
 
-	require.NoError(t, r.Gather(&acc))
+	r.Gather(&acc)
 	require.NotEmpty(t, acc.Errors)
 }
 
@@ -179,13 +174,12 @@ func TestHaproxyDefaultGetFromLocalhost(t *testing.T) {
 
 	err := r.Gather(&acc)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "127.0.0.1:1936/haproxy?stats/;csv")
+	assert.Contains(t, err.Error(), "127.0.0.1:1936/haproxy?stats/;csv")
 }
 
 func TestHaproxyKeepFieldNames(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := fmt.Fprint(w, csvOutputSample)
-		require.NoError(t, err)
+		fmt.Fprint(w, csvOutputSample)
 	}))
 	defer ts.Close()
 
@@ -196,7 +190,8 @@ func TestHaproxyKeepFieldNames(t *testing.T) {
 
 	var acc testutil.Accumulator
 
-	require.NoError(t, r.Gather(&acc))
+	err := r.Gather(&acc)
+	require.NoError(t, err)
 
 	tags := map[string]string{
 		"server": ts.Listener.Addr().String(),

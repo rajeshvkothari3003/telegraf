@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+type statServer struct{}
 
 var metrics = "all-outqueries\t3591637\nanswers-slow\t36451\nanswers0-1\t177297\nanswers1-10\t1209328\n" +
 	"answers10-100\t1238786\nanswers100-1000\t402917\nauth-zone-queries\t4\nauth4-answers-slow\t44248\n" +
@@ -103,20 +105,19 @@ func TestPowerdnsRecursorGeneratesMetrics(t *testing.T) {
 	// We create a fake server to return test data
 	controlSocket := "/tmp/pdns5724354148158589552.controlsocket"
 	addr, err := net.ResolveUnixAddr("unixgram", controlSocket)
-	require.NoError(t, err, "Cannot parse unix socket")
+	if err != nil {
+		t.Fatal("Cannot parse unix socket")
+	}
 	socket, err := net.ListenUnixgram("unixgram", addr)
-	require.NoError(t, err, "Cannot initialize server on port")
+	if err != nil {
+		t.Fatal("Cannot initialize server on port")
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer func() {
-			// Ignore the returned error as we need to remove the socket file anyway
-			//nolint:errcheck,revive
 			socket.Close()
-			// Ignore the returned error as we want to remove the file and ignore
-			// no-such-file errors
-			//nolint:errcheck,revive
 			os.Remove(controlSocket)
 			wg.Done()
 		}()
@@ -125,19 +126,13 @@ func TestPowerdnsRecursorGeneratesMetrics(t *testing.T) {
 			buf := make([]byte, 1024)
 			n, remote, err := socket.ReadFromUnix(buf)
 			if err != nil {
-				// Ignore the returned error as we cannot do anything about it anyway
-				//nolint:errcheck,revive
 				socket.Close()
 				return
 			}
 
 			data := buf[:n]
 			if string(data) == "get-all\n" {
-				// Ignore the returned error as we need to close the socket anyway
-				//nolint:errcheck,revive
 				socket.WriteToUnix([]byte(metrics), remote)
-				// Ignore the returned error as we cannot do anything about it anyway
-				//nolint:errcheck,revive
 				socket.Close()
 			}
 
@@ -150,11 +145,13 @@ func TestPowerdnsRecursorGeneratesMetrics(t *testing.T) {
 		SocketDir:   "/tmp",
 		SocketMode:  "0666",
 	}
-	require.NoError(t, p.Init())
+	err = p.Init()
+	require.NoError(t, err)
 
 	var acc testutil.Accumulator
 
-	require.NoError(t, acc.GatherError(p.Gather))
+	err = acc.GatherError(p.Gather)
+	require.NoError(t, err)
 
 	wg.Wait()
 
@@ -183,16 +180,12 @@ func TestPowerdnsRecursorGeneratesMetrics(t *testing.T) {
 		"x-ourtime2-4", "x-ourtime4-8", "x-ourtime8-16"}
 
 	for _, metric := range intMetrics {
-		require.True(t, acc.HasInt64Field("powerdns_recursor", metric), metric)
+		assert.True(t, acc.HasInt64Field("powerdns_recursor", metric), metric)
 	}
 }
 
 func TestPowerdnsRecursorParseMetrics(t *testing.T) {
-	p := &PowerdnsRecursor{
-		Log: testutil.Logger{},
-	}
-
-	values := p.parseResponse(metrics)
+	values := parseResponse(metrics)
 
 	tests := []struct {
 		key   string
@@ -306,17 +299,19 @@ func TestPowerdnsRecursorParseMetrics(t *testing.T) {
 
 	for _, test := range tests {
 		value, ok := values[test.key]
-		require.Truef(t, ok, "Did not find key for metric %s in values", test.key)
-		require.EqualValuesf(t, value, test.value, "Metric: %s, Expected: %d, actual: %d", test.key, test.value, value)
+		if !ok {
+			t.Errorf("Did not find key for metric %s in values", test.key)
+			continue
+		}
+		if value != test.value {
+			t.Errorf("Metric: %s, Expected: %d, actual: %d",
+				test.key, test.value, value)
+		}
 	}
 }
 
 func TestPowerdnsRecursorParseCorruptMetrics(t *testing.T) {
-	p := &PowerdnsRecursor{
-		Log: testutil.Logger{},
-	}
-
-	values := p.parseResponse(corruptMetrics)
+	values := parseResponse(corruptMetrics)
 
 	tests := []struct {
 		key   string
@@ -429,17 +424,19 @@ func TestPowerdnsRecursorParseCorruptMetrics(t *testing.T) {
 
 	for _, test := range tests {
 		value, ok := values[test.key]
-		require.Truef(t, ok, "Did not find key for metric %s in values", test.key)
-		require.EqualValuesf(t, value, test.value, "Metric: %s, Expected: %d, actual: %d", test.key, test.value, value)
+		if !ok {
+			t.Errorf("Did not find key for metric %s in values", test.key)
+			continue
+		}
+		if value != test.value {
+			t.Errorf("Metric: %s, Expected: %d, actual: %d",
+				test.key, test.value, value)
+		}
 	}
 }
 
 func TestPowerdnsRecursorParseIntOverflowMetrics(t *testing.T) {
-	p := &PowerdnsRecursor{
-		Log: testutil.Logger{},
-	}
-
-	values := p.parseResponse(intOverflowMetrics)
+	values := parseResponse(intOverflowMetrics)
 
 	tests := []struct {
 		key   string
@@ -552,7 +549,13 @@ func TestPowerdnsRecursorParseIntOverflowMetrics(t *testing.T) {
 
 	for _, test := range tests {
 		value, ok := values[test.key]
-		require.Truef(t, ok, "Did not find key for metric %s in values", test.key)
-		require.EqualValuesf(t, value, test.value, "Metric: %s, Expected: %d, actual: %d", test.key, test.value, value)
+		if !ok {
+			t.Errorf("Did not find key for metric %s in values", test.key)
+			continue
+		}
+		if value != test.value {
+			t.Errorf("Metric: %s, Expected: %d, actual: %d",
+				test.key, test.value, value)
+		}
 	}
 }

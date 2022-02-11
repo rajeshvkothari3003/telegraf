@@ -11,10 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/plugins/parsers"
 	"github.com/influxdata/telegraf/testutil"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -55,20 +56,22 @@ func BenchmarkTCP(b *testing.B) {
 
 	// send multiple messages to socket
 	for n := 0; n < b.N; n++ {
-		require.NoError(b, listener.Start(acc))
+		err := listener.Start(acc)
+		if err != nil {
+			panic(err)
+		}
 
 		conn, err := net.Dial("tcp", "127.0.0.1:8198")
-		require.NoError(b, err)
-		for i := 0; i < 100000; i++ {
-			_, err := fmt.Fprint(conn, testMsg)
-			require.NoError(b, err)
+		if err != nil {
+			panic(err)
 		}
-		require.NoError(b, conn.(*net.TCPConn).CloseWrite())
+		for i := 0; i < 100000; i++ {
+			fmt.Fprintf(conn, testMsg)
+		}
+		conn.(*net.TCPConn).CloseWrite()
 		// wait for all 100,000 metrics to be processed
 		buf := []byte{0}
-		// will EOF when completed
-		_, err = conn.Read(buf)
-		require.NoError(b, err)
+		conn.Read(buf) // will EOF when completed
 		listener.Stop()
 	}
 }
@@ -84,21 +87,21 @@ func TestHighTrafficTCP(t *testing.T) {
 	acc := &testutil.Accumulator{}
 
 	// send multiple messages to socket
-	require.NoError(t, listener.Start(acc))
+	err := listener.Start(acc)
+	require.NoError(t, err)
 
 	conn, err := net.Dial("tcp", "127.0.0.1:8199")
 	require.NoError(t, err)
 	for i := 0; i < 100000; i++ {
-		_, err := fmt.Fprint(conn, testMsg)
-		require.NoError(t, err)
+		fmt.Fprintf(conn, testMsg)
 	}
-	require.NoError(t, conn.(*net.TCPConn).CloseWrite())
+	conn.(*net.TCPConn).CloseWrite()
 	buf := []byte{0}
 	_, err = conn.Read(buf)
-	require.Equal(t, err, io.EOF)
+	assert.Equal(t, err, io.EOF)
 	listener.Stop()
 
-	require.Equal(t, 100000, int(acc.NMetrics()))
+	assert.Equal(t, 100000, int(acc.NMetrics()))
 }
 
 func TestConnectTCP(t *testing.T) {
@@ -118,8 +121,7 @@ func TestConnectTCP(t *testing.T) {
 	require.NoError(t, err)
 
 	// send single message to socket
-	_, err = fmt.Fprint(conn, testMsg)
-	require.NoError(t, err)
+	fmt.Fprintf(conn, testMsg)
 	acc.Wait(1)
 	acc.AssertContainsTaggedFields(t, "cpu_load_short",
 		map[string]interface{}{"value": float64(12)},
@@ -127,8 +129,7 @@ func TestConnectTCP(t *testing.T) {
 	)
 
 	// send multiple messages to socket
-	_, err = fmt.Fprint(conn, testMsgs)
-	require.NoError(t, err)
+	fmt.Fprintf(conn, testMsgs)
 	acc.Wait(6)
 	hostTags := []string{"server02", "server03",
 		"server04", "server05", "server06"}
@@ -155,26 +156,25 @@ func TestConcurrentConns(t *testing.T) {
 	defer listener.Stop()
 
 	_, err := net.Dial("tcp", "127.0.0.1:8195")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	_, err = net.Dial("tcp", "127.0.0.1:8195")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Connection over the limit:
 	conn, err := net.Dial("tcp", "127.0.0.1:8195")
-	require.NoError(t, err)
-	_, err = net.Dial("tcp", "127.0.0.1:8195")
-	require.NoError(t, err)
+	assert.NoError(t, err)
+	net.Dial("tcp", "127.0.0.1:8195")
 	buf := make([]byte, 1500)
 	n, err := conn.Read(buf)
-	require.NoError(t, err)
-	require.Equal(t,
+	assert.NoError(t, err)
+	assert.Equal(t,
 		"Telegraf maximum concurrent TCP connections (2) reached, closing.\n"+
 			"You may want to increase max_tcp_connections in"+
 			" the Telegraf tcp listener configuration.\n",
 		string(buf[:n]))
 
 	_, err = conn.Read(buf)
-	require.Equal(t, io.EOF, err)
+	assert.Equal(t, io.EOF, err)
 }
 
 // Test that MaxTCPConnections is respected when max==1
@@ -192,24 +192,23 @@ func TestConcurrentConns1(t *testing.T) {
 	defer listener.Stop()
 
 	_, err := net.Dial("tcp", "127.0.0.1:8196")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Connection over the limit:
 	conn, err := net.Dial("tcp", "127.0.0.1:8196")
-	require.NoError(t, err)
-	_, err = net.Dial("tcp", "127.0.0.1:8196")
-	require.NoError(t, err)
+	assert.NoError(t, err)
+	net.Dial("tcp", "127.0.0.1:8196")
 	buf := make([]byte, 1500)
 	n, err := conn.Read(buf)
-	require.NoError(t, err)
-	require.Equal(t,
+	assert.NoError(t, err)
+	assert.Equal(t,
 		"Telegraf maximum concurrent TCP connections (1) reached, closing.\n"+
 			"You may want to increase max_tcp_connections in"+
 			" the Telegraf tcp listener configuration.\n",
 		string(buf[:n]))
 
 	_, err = conn.Read(buf)
-	require.Equal(t, io.EOF, err)
+	assert.Equal(t, io.EOF, err)
 }
 
 // Test that MaxTCPConnections is respected
@@ -226,9 +225,9 @@ func TestCloseConcurrentConns(t *testing.T) {
 	require.NoError(t, listener.Start(acc))
 
 	_, err := net.Dial("tcp", "127.0.0.1:8195")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	_, err = net.Dial("tcp", "127.0.0.1:8195")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	listener.Stop()
 }
@@ -246,7 +245,7 @@ func TestRunParser(t *testing.T) {
 	go listener.tcpParser()
 
 	in <- testmsg
-	require.NoError(t, listener.Gather(&acc))
+	listener.Gather(&acc)
 
 	acc.Wait(1)
 	acc.AssertContainsTaggedFields(t, "cpu_load_short",
@@ -255,7 +254,7 @@ func TestRunParser(t *testing.T) {
 	)
 }
 
-func TestRunParserInvalidMsg(_ *testing.T) {
+func TestRunParserInvalidMsg(t *testing.T) {
 	var testmsg = []byte("cpu_load_short")
 
 	listener, in := newTestTCPListener()
@@ -294,7 +293,7 @@ func TestRunParserGraphiteMsg(t *testing.T) {
 	go listener.tcpParser()
 
 	in <- testmsg
-	require.NoError(t, listener.Gather(&acc))
+	listener.Gather(&acc)
 
 	acc.Wait(1)
 	acc.AssertContainsFields(t, "cpu_load_graphite",
@@ -317,7 +316,7 @@ func TestRunParserJSONMsg(t *testing.T) {
 	go listener.tcpParser()
 
 	in <- testmsg
-	require.NoError(t, listener.Gather(&acc))
+	listener.Gather(&acc)
 
 	acc.Wait(1)
 	acc.AssertContainsFields(t, "udp_json_test",

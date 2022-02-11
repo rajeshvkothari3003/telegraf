@@ -2,7 +2,7 @@ package linux_sysctl_fs
 
 import (
 	"bytes"
-	"errors"
+	"io/ioutil"
 	"os"
 	"strconv"
 
@@ -28,12 +28,8 @@ func (sfs SysctlFS) SampleConfig() string {
 }
 
 func (sfs *SysctlFS) gatherList(file string, fields map[string]interface{}, fieldNames ...string) error {
-	bs, err := os.ReadFile(sfs.path + "/" + file)
+	bs, err := ioutil.ReadFile(sfs.path + "/" + file)
 	if err != nil {
-		// Ignore non-existing entries
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
 		return err
 	}
 
@@ -57,12 +53,8 @@ func (sfs *SysctlFS) gatherList(file string, fields map[string]interface{}, fiel
 }
 
 func (sfs *SysctlFS) gatherOne(name string, fields map[string]interface{}) error {
-	bs, err := os.ReadFile(sfs.path + "/" + name)
+	bs, err := ioutil.ReadFile(sfs.path + "/" + name)
 	if err != nil {
-		// Ignore non-existing entries
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
 		return err
 	}
 
@@ -79,23 +71,12 @@ func (sfs *SysctlFS) Gather(acc telegraf.Accumulator) error {
 	fields := map[string]interface{}{}
 
 	for _, n := range []string{"aio-nr", "aio-max-nr", "dquot-nr", "dquot-max", "super-nr", "super-max"} {
-		if err := sfs.gatherOne(n, fields); err != nil {
-			return err
-		}
+		sfs.gatherOne(n, fields)
 	}
 
-	err := sfs.gatherList("inode-state", fields, "inode-nr", "inode-free-nr", "inode-preshrink-nr")
-	if err != nil {
-		return err
-	}
-	err = sfs.gatherList("dentry-state", fields, "dentry-nr", "dentry-unused-nr", "dentry-age-limit", "dentry-want-pages")
-	if err != nil {
-		return err
-	}
-	err = sfs.gatherList("file-nr", fields, "file-nr", "", "file-max")
-	if err != nil {
-		return err
-	}
+	sfs.gatherList("inode-state", fields, "inode-nr", "inode-free-nr", "inode-preshrink-nr")
+	sfs.gatherList("dentry-state", fields, "dentry-nr", "dentry-unused-nr", "dentry-age-limit", "dentry-want-pages")
+	sfs.gatherList("file-nr", fields, "file-nr", "", "file-max")
 
 	acc.AddFields("linux_sysctl_fs", fields, nil)
 	return nil
@@ -110,6 +91,7 @@ func GetHostProc() string {
 }
 
 func init() {
+
 	inputs.Add("linux_sysctl_fs", func() telegraf.Input {
 		return &SysctlFS{
 			path: path.Join(GetHostProc(), "/sys/fs"),

@@ -5,11 +5,11 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
-	"io"
+	"io/ioutil"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
-
 	"github.com/influxdata/telegraf"
 )
 
@@ -17,33 +17,30 @@ type GithubWebhook struct {
 	Path   string
 	Secret string
 	acc    telegraf.Accumulator
-	log    telegraf.Logger
 }
 
-func (gh *GithubWebhook) Register(router *mux.Router, acc telegraf.Accumulator, log telegraf.Logger) {
+func (gh *GithubWebhook) Register(router *mux.Router, acc telegraf.Accumulator) {
 	router.HandleFunc(gh.Path, gh.eventHandler).Methods("POST")
-
-	gh.log = log
-	gh.log.Infof("Started the webhooks_github on %s", gh.Path)
+	log.Printf("I! Started the webhooks_github on %s\n", gh.Path)
 	gh.acc = acc
 }
 
 func (gh *GithubWebhook) eventHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	eventType := r.Header.Get("X-Github-Event")
-	data, err := io.ReadAll(r.Body)
+	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	if gh.Secret != "" && !checkSignature(gh.Secret, data, r.Header.Get("X-Hub-Signature")) {
-		gh.log.Error("Fail to check the github webhook signature")
+		log.Printf("E! Fail to check the github webhook signature\n")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	e, err := gh.NewEvent(data, eventType)
+	e, err := NewEvent(data, eventType)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -72,8 +69,8 @@ func (e *newEventError) Error() string {
 	return e.s
 }
 
-func (gh *GithubWebhook) NewEvent(data []byte, name string) (Event, error) {
-	gh.log.Debugf("New %v event received", name)
+func NewEvent(data []byte, name string) (Event, error) {
+	log.Printf("D! New %v event received", name)
 	switch name {
 	case "commit_comment":
 		return generateEvent(data, &CommitCommentEvent{})
@@ -129,9 +126,7 @@ func checkSignature(secret string, data []byte, signature string) bool {
 
 func generateSignature(secret string, data []byte) string {
 	mac := hmac.New(sha1.New, []byte(secret))
-	if _, err := mac.Write(data); err != nil {
-		return err.Error()
-	}
+	mac.Write(data)
 	result := mac.Sum(nil)
 	return "sha1=" + hex.EncodeToString(result)
 }

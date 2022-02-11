@@ -24,10 +24,7 @@ import (
 	"log"
 	"time"
 
-	otlog "github.com/opentracing/opentracing-go/log"
-	zipkinot "github.com/openzipkin-contrib/zipkin-go-opentracing"
-	"github.com/openzipkin/zipkin-go"
-	zipkinhttp "github.com/openzipkin/zipkin-go/reporter/http"
+	zipkin "github.com/openzipkin/zipkin-go-opentracing"
 )
 
 var (
@@ -37,6 +34,8 @@ var (
 	SpanCount         int
 	ZipkinServerHost  string
 )
+
+const usage = `./stress_test_write -batch_size=<batch_size> -max_backlog=<max_span_buffer_backlog> -batch_interval=<batch_interval_in_seconds> -span_count<number_of_spans_to_write> -zipkin_host=<zipkin_service_hostname>`
 
 func init() {
 	flag.IntVar(&BatchSize, "batch_size", 10000, "")
@@ -49,30 +48,27 @@ func init() {
 func main() {
 	flag.Parse()
 	var hostname = fmt.Sprintf("http://%s:9411/api/v1/spans", ZipkinServerHost)
-	reporter := zipkinhttp.NewReporter(
+	collector, err := zipkin.NewHTTPCollector(
 		hostname,
-		zipkinhttp.BatchSize(BatchSize),
-		zipkinhttp.MaxBacklog(MaxBackLog),
-		zipkinhttp.BatchInterval(time.Duration(BatchTimeInterval)*time.Second),
-	)
-	defer reporter.Close()
+		zipkin.HTTPBatchSize(BatchSize),
+		zipkin.HTTPMaxBacklog(MaxBackLog),
+		zipkin.HTTPBatchInterval(time.Duration(BatchTimeInterval)*time.Second))
+	defer collector.Close()
+	if err != nil {
+		log.Fatalf("Error initializing zipkin http collector: %v\n", err)
+	}
 
-	endpoint, err := zipkin.NewEndpoint("Trivial", "127.0.0.1:0")
+	tracer, err := zipkin.NewTracer(
+		zipkin.NewRecorder(collector, false, "127.0.0.1:0", "Trivial"))
+
 	if err != nil {
 		log.Fatalf("Error: %v\n", err)
 	}
-
-	nativeTracer, err := zipkin.NewTracer(reporter, zipkin.WithLocalEndpoint(endpoint))
-	if err != nil {
-		log.Fatalf("Error: %v\n", err)
-	}
-
-	tracer := zipkinot.Wrap(nativeTracer)
 
 	log.Printf("Writing %d spans to zipkin server at %s\n", SpanCount, hostname)
 	for i := 0; i < SpanCount; i++ {
 		parent := tracer.StartSpan("Parent")
-		parent.LogFields(otlog.Message(fmt.Sprintf("Trace%d", i)))
+		parent.LogEvent(fmt.Sprintf("Trace%d", i))
 		parent.Finish()
 	}
 	log.Println("Done. Flushing remaining spans...")

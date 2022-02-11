@@ -4,20 +4,19 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 	"runtime"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -118,7 +117,7 @@ func TestWriteSecureNoClientAuth(t *testing.T) {
 	// post single message to listener
 	resp, err := noClientAuthClient.Post(createURL(listener, "https", "/write", "db=mydb"), "", bytes.NewBuffer([]byte(testMsg)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 204, resp.StatusCode)
 }
 
@@ -133,7 +132,7 @@ func TestWriteSecureWithClientAuth(t *testing.T) {
 	// post single message to listener
 	resp, err := getSecureClient().Post(createURL(listener, "https", "/write", "db=mydb"), "", bytes.NewBuffer([]byte(testMsg)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 204, resp.StatusCode)
 }
 
@@ -152,7 +151,7 @@ func TestWriteBasicAuth(t *testing.T) {
 	req.SetBasicAuth(basicUsername, basicPassword)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, http.StatusNoContent, resp.StatusCode)
 }
 
@@ -170,7 +169,7 @@ func TestWriteKeepDatabase(t *testing.T) {
 	// post single message to listener
 	resp, err := http.Post(createURL(listener, "http", "/write", "db=mydb"), "", bytes.NewBuffer([]byte(testMsg)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 204, resp.StatusCode)
 
 	acc.Wait(1)
@@ -182,7 +181,7 @@ func TestWriteKeepDatabase(t *testing.T) {
 	// post single message to listener with a database tag in it already. It should be clobbered.
 	resp, err = http.Post(createURL(listener, "http", "/write", "db=mydb"), "", bytes.NewBuffer([]byte(testMsgWithDB)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 204, resp.StatusCode)
 
 	acc.Wait(1)
@@ -194,7 +193,7 @@ func TestWriteKeepDatabase(t *testing.T) {
 	// post multiple message to listener
 	resp, err = http.Post(createURL(listener, "http", "/write", "db=mydb"), "", bytes.NewBuffer([]byte(testMsgs)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 204, resp.StatusCode)
 
 	acc.Wait(2)
@@ -219,7 +218,7 @@ func TestWriteRetentionPolicyTag(t *testing.T) {
 
 	resp, err := http.Post(createURL(listener, "http", "/write", "rp=myrp"), "", bytes.NewBuffer([]byte("cpu time_idle=42")))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.Equal(t, 204, resp.StatusCode)
 
 	expected := []telegraf.Metric{
@@ -251,7 +250,7 @@ func TestWriteNoNewline(t *testing.T) {
 	// post single message to listener
 	resp, err := http.Post(createURL(listener, "http", "/write", "db=mydb"), "", bytes.NewBuffer([]byte(testMsgNoNewline)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 204, resp.StatusCode)
 
 	acc.Wait(1)
@@ -272,7 +271,7 @@ func TestPartialWrite(t *testing.T) {
 	// post single message to listener
 	resp, err := http.Post(createURL(listener, "http", "/write", "db=mydb"), "", bytes.NewBuffer([]byte(testPartial)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 400, resp.StatusCode)
 
 	acc.Wait(1)
@@ -301,7 +300,7 @@ func TestWriteMaxLineSizeIncrease(t *testing.T) {
 	// Post a gigantic metric to the listener and verify that it writes OK this time:
 	resp, err := http.Post(createURL(listener, "http", "/write", "db=mydb"), "", bytes.NewBuffer([]byte(hugeMetric)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 204, resp.StatusCode)
 }
 
@@ -309,7 +308,7 @@ func TestWriteVerySmallMaxBody(t *testing.T) {
 	listener := &InfluxDBListener{
 		Log:            testutil.Logger{},
 		ServiceAddress: "localhost:0",
-		MaxBodySize:    config.Size(4096),
+		MaxBodySize:    internal.Size{Size: 4096},
 		timeFunc:       time.Now,
 	}
 
@@ -320,7 +319,7 @@ func TestWriteVerySmallMaxBody(t *testing.T) {
 
 	resp, err := http.Post(createURL(listener, "http", "/write", ""), "", bytes.NewBuffer([]byte(hugeMetric)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 413, resp.StatusCode)
 }
 
@@ -340,7 +339,7 @@ func TestWriteLargeLine(t *testing.T) {
 
 	resp, err := http.Post(createURL(listener, "http", "/write", ""), "", bytes.NewBuffer([]byte(hugeMetric+testMsgs)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	//todo: with the new parser, long lines aren't a problem.  Do we need to skip them?
 	//require.EqualValues(t, 400, resp.StatusCode)
 
@@ -407,7 +406,7 @@ func TestWriteGzippedData(t *testing.T) {
 	require.NoError(t, listener.Start(acc))
 	defer listener.Stop()
 
-	data, err := os.ReadFile("./testdata/testmsgs.gz")
+	data, err := ioutil.ReadFile("./testdata/testmsgs.gz")
 	require.NoError(t, err)
 
 	req, err := http.NewRequest("POST", createURL(listener, "http", "/write", ""), bytes.NewBuffer(data))
@@ -417,7 +416,6 @@ func TestWriteGzippedData(t *testing.T) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
 	require.EqualValues(t, 204, resp.StatusCode)
 
 	hostTags := []string{"server02", "server03",
@@ -451,21 +449,15 @@ func TestWriteHighTraffic(t *testing.T) {
 			defer innerwg.Done()
 			for i := 0; i < 500; i++ {
 				resp, err := http.Post(createURL(listener, "http", "/write", "db=mydb"), "", bytes.NewBuffer([]byte(testMsgs)))
-				if err != nil {
-					return
-				}
-				if err := resp.Body.Close(); err != nil {
-					return
-				}
-				if resp.StatusCode != 204 {
-					return
-				}
+				require.NoError(t, err)
+				resp.Body.Close()
+				require.EqualValues(t, 204, resp.StatusCode)
 			}
 		}(&wg)
 	}
 
 	wg.Wait()
-	require.NoError(t, listener.Gather(acc))
+	listener.Gather(acc)
 
 	acc.Wait(25000)
 	require.Equal(t, int64(25000), int64(acc.NMetrics()))
@@ -482,7 +474,7 @@ func TestReceive404ForInvalidEndpoint(t *testing.T) {
 	// post single message to listener
 	resp, err := http.Post(createURL(listener, "http", "/foobar", ""), "", bytes.NewBuffer([]byte(testMsg)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 404, resp.StatusCode)
 }
 
@@ -497,7 +489,7 @@ func TestWriteInvalid(t *testing.T) {
 	// post single message to listener
 	resp, err := http.Post(createURL(listener, "http", "/write", "db=mydb"), "", bytes.NewBuffer([]byte(badMsg)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 400, resp.StatusCode)
 }
 
@@ -512,7 +504,7 @@ func TestWriteEmpty(t *testing.T) {
 	// post single message to listener
 	resp, err := http.Post(createURL(listener, "http", "/write", "db=mydb"), "", bytes.NewBuffer([]byte(emptyMsg)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 204, resp.StatusCode)
 }
 
@@ -528,7 +520,6 @@ func TestQuery(t *testing.T) {
 	resp, err := http.Post(
 		createURL(listener, "http", "/query", "db=&q=CREATE+DATABASE+IF+NOT+EXISTS+%22mydb%22"), "", nil)
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
 	require.EqualValues(t, 200, resp.StatusCode)
 }
 
@@ -544,7 +535,7 @@ func TestPing(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1.0", resp.Header["X-Influxdb-Version"][0])
 	require.Len(t, resp.Header["Content-Type"], 0)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 204, resp.StatusCode)
 }
 
@@ -560,7 +551,7 @@ func TestPingVerbose(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1.0", resp.Header["X-Influxdb-Version"][0])
 	require.Equal(t, "application/json", resp.Header["Content-Type"][0])
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 200, resp.StatusCode)
 }
 
@@ -576,7 +567,7 @@ func TestWriteWithPrecision(t *testing.T) {
 	resp, err := http.Post(
 		createURL(listener, "http", "/write", "precision=s"), "", bytes.NewBuffer([]byte(msg)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 204, resp.StatusCode)
 
 	acc.Wait(1)
@@ -601,7 +592,7 @@ func TestWriteWithPrecisionNoTimestamp(t *testing.T) {
 	resp, err := http.Post(
 		createURL(listener, "http", "/write", "precision=s"), "", bytes.NewBuffer([]byte(msg)))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.Body.Close()
 	require.EqualValues(t, 204, resp.StatusCode)
 
 	acc.Wait(1)
@@ -647,7 +638,7 @@ func TestWriteParseErrors(t *testing.T) {
 			// post single message to listener
 			resp, err := http.Post(createURL(listener, "http", "/write", ""), "", bytes.NewBuffer([]byte(tt.input)))
 			require.NoError(t, err)
-			require.NoError(t, resp.Body.Close())
+			resp.Body.Close()
 			require.EqualValues(t, 400, resp.StatusCode)
 			require.Equal(t, tt.expected, resp.Header["X-Influxdb-Error"][0])
 		})

@@ -4,10 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/miekg/dns"
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+
+	"github.com/miekg/dns"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var servers = []string{"8.8.8.8"}
@@ -24,12 +25,12 @@ func TestGathering(t *testing.T) {
 	var acc testutil.Accumulator
 
 	err := acc.GatherError(dnsConfig.Gather)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	metric, ok := acc.Get("dns_query")
 	require.True(t, ok)
 	queryTime, _ := metric.Fields["query_time_ms"].(float64)
 
-	require.NotEqual(t, 0, queryTime)
+	assert.NotEqual(t, 0, queryTime)
 }
 
 func TestGatheringMxRecord(t *testing.T) {
@@ -44,12 +45,12 @@ func TestGatheringMxRecord(t *testing.T) {
 	dnsConfig.RecordType = "MX"
 
 	err := acc.GatherError(dnsConfig.Gather)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	metric, ok := acc.Get("dns_query")
 	require.True(t, ok)
 	queryTime, _ := metric.Fields["query_time_ms"].(float64)
 
-	require.NotEqual(t, 0, queryTime)
+	assert.NotEqual(t, 0, queryTime)
 }
 
 func TestGatheringRootDomain(t *testing.T) {
@@ -70,12 +71,12 @@ func TestGatheringRootDomain(t *testing.T) {
 		"result":      "success",
 	}
 	fields := map[string]interface{}{
-		"rcode_value": 0,
+		"rcode_value": int(0),
 		"result_code": uint64(0),
 	}
 
 	err := acc.GatherError(dnsConfig.Gather)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	metric, ok := acc.Get("dns_query")
 	require.True(t, ok)
 	queryTime, _ := metric.Fields["query_time_ms"].(float64)
@@ -101,12 +102,12 @@ func TestMetricContainsServerAndDomainAndRecordTypeTags(t *testing.T) {
 		"result":      "success",
 	}
 	fields := map[string]interface{}{
-		"rcode_value": 0,
+		"rcode_value": int(0),
 		"result_code": uint64(0),
 	}
 
 	err := acc.GatherError(dnsConfig.Gather)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	metric, ok := acc.Get("dns_query")
 	require.True(t, ok)
 	queryTime, _ := metric.Fields["query_time_ms"].(float64)
@@ -133,9 +134,9 @@ func TestGatheringTimeout(t *testing.T) {
 	}()
 	select {
 	case err := <-channel:
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	case <-time.After(time.Second * 2):
-		require.Fail(t, "DNS query did not timeout")
+		assert.Fail(t, "DNS query did not timeout")
 	}
 }
 
@@ -144,16 +145,16 @@ func TestSettingDefaultValues(t *testing.T) {
 
 	dnsConfig.setDefaultValues()
 
-	require.Equal(t, []string{"."}, dnsConfig.Domains, "Default domain not equal \".\"")
-	require.Equal(t, "NS", dnsConfig.RecordType, "Default record type not equal 'NS'")
-	require.Equal(t, 53, dnsConfig.Port, "Default port number not equal 53")
-	require.Equal(t, 2, dnsConfig.Timeout, "Default timeout not equal 2")
+	assert.Equal(t, []string{"."}, dnsConfig.Domains, "Default domain not equal \".\"")
+	assert.Equal(t, "NS", dnsConfig.RecordType, "Default record type not equal 'NS'")
+	assert.Equal(t, 53, dnsConfig.Port, "Default port number not equal 53")
+	assert.Equal(t, 2, dnsConfig.Timeout, "Default timeout not equal 2")
 
 	dnsConfig = DNSQuery{Domains: []string{"."}}
 
 	dnsConfig.setDefaultValues()
 
-	require.Equal(t, "NS", dnsConfig.RecordType, "Default record type not equal 'NS'")
+	assert.Equal(t, "NS", dnsConfig.RecordType, "Default record type not equal 'NS'")
 }
 
 func TestRecordTypeParser(t *testing.T) {
@@ -162,47 +163,47 @@ func TestRecordTypeParser(t *testing.T) {
 
 	dnsConfig.RecordType = "A"
 	recordType, _ = dnsConfig.parseRecordType()
-	require.Equal(t, dns.TypeA, recordType)
+	assert.Equal(t, dns.TypeA, recordType)
 
 	dnsConfig.RecordType = "AAAA"
 	recordType, _ = dnsConfig.parseRecordType()
-	require.Equal(t, dns.TypeAAAA, recordType)
+	assert.Equal(t, dns.TypeAAAA, recordType)
 
 	dnsConfig.RecordType = "ANY"
 	recordType, _ = dnsConfig.parseRecordType()
-	require.Equal(t, dns.TypeANY, recordType)
+	assert.Equal(t, dns.TypeANY, recordType)
 
 	dnsConfig.RecordType = "CNAME"
 	recordType, _ = dnsConfig.parseRecordType()
-	require.Equal(t, dns.TypeCNAME, recordType)
+	assert.Equal(t, dns.TypeCNAME, recordType)
 
 	dnsConfig.RecordType = "MX"
 	recordType, _ = dnsConfig.parseRecordType()
-	require.Equal(t, dns.TypeMX, recordType)
+	assert.Equal(t, dns.TypeMX, recordType)
 
 	dnsConfig.RecordType = "NS"
 	recordType, _ = dnsConfig.parseRecordType()
-	require.Equal(t, dns.TypeNS, recordType)
+	assert.Equal(t, dns.TypeNS, recordType)
 
 	dnsConfig.RecordType = "PTR"
 	recordType, _ = dnsConfig.parseRecordType()
-	require.Equal(t, dns.TypePTR, recordType)
+	assert.Equal(t, dns.TypePTR, recordType)
 
 	dnsConfig.RecordType = "SOA"
 	recordType, _ = dnsConfig.parseRecordType()
-	require.Equal(t, dns.TypeSOA, recordType)
+	assert.Equal(t, dns.TypeSOA, recordType)
 
 	dnsConfig.RecordType = "SPF"
 	recordType, _ = dnsConfig.parseRecordType()
-	require.Equal(t, dns.TypeSPF, recordType)
+	assert.Equal(t, dns.TypeSPF, recordType)
 
 	dnsConfig.RecordType = "SRV"
 	recordType, _ = dnsConfig.parseRecordType()
-	require.Equal(t, dns.TypeSRV, recordType)
+	assert.Equal(t, dns.TypeSRV, recordType)
 
 	dnsConfig.RecordType = "TXT"
 	recordType, _ = dnsConfig.parseRecordType()
-	require.Equal(t, dns.TypeTXT, recordType)
+	assert.Equal(t, dns.TypeTXT, recordType)
 }
 
 func TestRecordTypeParserError(t *testing.T) {
@@ -211,5 +212,5 @@ func TestRecordTypeParserError(t *testing.T) {
 
 	dnsConfig.RecordType = "nil"
 	_, err = dnsConfig.parseRecordType()
-	require.Error(t, err)
+	assert.Error(t, err)
 }

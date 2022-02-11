@@ -1,4 +1,3 @@
-//go:build !windows
 // +build !windows
 
 package process
@@ -68,7 +67,7 @@ func TestMain(m *testing.M) {
 // externalProcess is an external "misbehaving" process that won't exit
 // cleanly.
 func externalProcess() {
-	wait := make(chan int)
+	wait := make(chan int, 0)
 	fmt.Fprintln(os.Stdout, "started")
 	<-wait
 	os.Exit(2)

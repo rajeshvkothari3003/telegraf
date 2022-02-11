@@ -8,23 +8,22 @@ import (
 	"sync"
 	"time"
 
-	githubLib "github.com/google/go-github/v32/github"
-	"golang.org/x/oauth2"
-
+	"github.com/google/go-github/v32/github"
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"github.com/influxdata/telegraf/selfstat"
+	"golang.org/x/oauth2"
 )
 
 // GitHub - plugin main structure
 type GitHub struct {
-	Repositories      []string        `toml:"repositories"`
-	AccessToken       string          `toml:"access_token"`
-	AdditionalFields  []string        `toml:"additional_fields"`
-	EnterpriseBaseURL string          `toml:"enterprise_base_url"`
-	HTTPTimeout       config.Duration `toml:"http_timeout"`
-	githubClient      *githubLib.Client
+	Repositories      []string          `toml:"repositories"`
+	AccessToken       string            `toml:"access_token"`
+	AdditionalFields  []string          `toml:"additional_fields"`
+	EnterpriseBaseURL string            `toml:"enterprise_base_url"`
+	HTTPTimeout       internal.Duration `toml:"http_timeout"`
+	githubClient      *github.Client
 
 	obfuscatedToken string
 
@@ -69,12 +68,12 @@ func (g *GitHub) Description() string {
 }
 
 // Create GitHub Client
-func (g *GitHub) createGitHubClient(ctx context.Context) (*githubLib.Client, error) {
+func (g *GitHub) createGitHubClient(ctx context.Context) (*github.Client, error) {
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 		},
-		Timeout: time.Duration(g.HTTPTimeout),
+		Timeout: g.HTTPTimeout.Duration,
 	}
 
 	g.obfuscatedToken = "Unauthenticated"
@@ -94,11 +93,11 @@ func (g *GitHub) createGitHubClient(ctx context.Context) (*githubLib.Client, err
 	return g.newGithubClient(httpClient)
 }
 
-func (g *GitHub) newGithubClient(httpClient *http.Client) (*githubLib.Client, error) {
+func (g *GitHub) newGithubClient(httpClient *http.Client) (*github.Client, error) {
 	if g.EnterpriseBaseURL != "" {
-		return githubLib.NewEnterpriseClient(g.EnterpriseBaseURL, "", httpClient)
+		return github.NewEnterpriseClient(g.EnterpriseBaseURL, "", httpClient)
 	}
-	return githubLib.NewClient(httpClient), nil
+	return github.NewClient(httpClient), nil
 }
 
 // Gather GitHub Metrics
@@ -173,16 +172,16 @@ func (g *GitHub) Gather(acc telegraf.Accumulator) error {
 	return nil
 }
 
-func (g *GitHub) handleRateLimit(response *githubLib.Response, err error) {
+func (g *GitHub) handleRateLimit(response *github.Response, err error) {
 	if err == nil {
 		g.RateLimit.Set(int64(response.Rate.Limit))
 		g.RateRemaining.Set(int64(response.Rate.Remaining))
-	} else if _, ok := err.(*githubLib.RateLimitError); ok {
+	} else if _, ok := err.(*github.RateLimitError); ok {
 		g.RateLimitErrors.Incr(1)
 	}
 }
 
-func splitRepositoryName(repositoryName string) (owner string, repository string, err error) {
+func splitRepositoryName(repositoryName string) (string, string, error) {
 	splits := strings.SplitN(repositoryName, "/", 2)
 
 	if len(splits) != 2 {
@@ -192,7 +191,7 @@ func splitRepositoryName(repositoryName string) (owner string, repository string
 	return splits[0], splits[1], nil
 }
 
-func getLicense(rI *githubLib.Repository) string {
+func getLicense(rI *github.Repository) string {
 	if licenseName := rI.GetLicense().GetName(); licenseName != "" {
 		return licenseName
 	}
@@ -200,7 +199,7 @@ func getLicense(rI *githubLib.Repository) string {
 	return "None"
 }
 
-func getTags(repositoryInfo *githubLib.Repository) map[string]string {
+func getTags(repositoryInfo *github.Repository) map[string]string {
 	return map[string]string{
 		"owner":    repositoryInfo.GetOwner().GetLogin(),
 		"name":     repositoryInfo.GetName(),
@@ -209,7 +208,7 @@ func getTags(repositoryInfo *githubLib.Repository) map[string]string {
 	}
 }
 
-func getFields(repositoryInfo *githubLib.Repository) map[string]interface{} {
+func getFields(repositoryInfo *github.Repository) map[string]interface{} {
 	return map[string]interface{}{
 		"stars":       repositoryInfo.GetStargazersCount(),
 		"subscribers": repositoryInfo.GetSubscribersCount(),
@@ -222,9 +221,9 @@ func getFields(repositoryInfo *githubLib.Repository) map[string]interface{} {
 }
 
 func (g *GitHub) getPullRequestFields(ctx context.Context, owner, repo string) (map[string]interface{}, error) {
-	options := githubLib.SearchOptions{
+	options := github.SearchOptions{
 		TextMatch: false,
-		ListOptions: githubLib.ListOptions{
+		ListOptions: github.ListOptions{
 			PerPage: 100,
 			Page:    1,
 		},
@@ -250,7 +249,7 @@ func (g *GitHub) getPullRequestFields(ctx context.Context, owner, repo string) (
 func init() {
 	inputs.Add("github", func() telegraf.Input {
 		return &GitHub{
-			HTTPTimeout: config.Duration(time.Second * 5),
+			HTTPTimeout: internal.Duration{Duration: time.Second * 5},
 		}
 	})
 }

@@ -4,22 +4,21 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/internal/rotate"
 	"github.com/influxdata/telegraf/plugins/outputs"
 	"github.com/influxdata/telegraf/plugins/serializers"
 )
 
 type File struct {
-	Files               []string        `toml:"files"`
-	RotationInterval    config.Duration `toml:"rotation_interval"`
-	RotationMaxSize     config.Size     `toml:"rotation_max_size"`
-	RotationMaxArchives int             `toml:"rotation_max_archives"`
-	UseBatchFormat      bool            `toml:"use_batch_format"`
-	Log                 telegraf.Logger `toml:"-"`
+	Files               []string          `toml:"files"`
+	RotationInterval    internal.Duration `toml:"rotation_interval"`
+	RotationMaxSize     internal.Size     `toml:"rotation_max_size"`
+	RotationMaxArchives int               `toml:"rotation_max_archives"`
+	UseBatchFormat      bool              `toml:"use_batch_format"`
+	Log                 telegraf.Logger   `toml:"-"`
 
 	writer     io.Writer
 	closers    []io.Closer
@@ -70,7 +69,7 @@ func (f *File) Connect() error {
 			writers = append(writers, os.Stdout)
 		} else {
 			of, err := rotate.NewFileWriter(
-				file, time.Duration(f.RotationInterval), int64(f.RotationMaxSize), f.RotationMaxArchives)
+				file, f.RotationInterval.Duration, f.RotationMaxSize.Size, f.RotationMaxArchives)
 			if err != nil {
 				return err
 			}

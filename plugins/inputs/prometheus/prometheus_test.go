@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-	"k8s.io/apimachinery/pkg/fields"
-
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/kubernetes/apimachinery/pkg/fields"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const sampleTextFormat = `# HELP go_gc_duration_seconds A summary of the GC invocation durations.
@@ -51,8 +51,7 @@ go_goroutines 15 1490802350000
 
 func TestPrometheusGeneratesMetrics(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := fmt.Fprintln(w, sampleTextFormat)
-		require.NoError(t, err)
+		fmt.Fprintln(w, sampleTextFormat)
 	}))
 	defer ts.Close()
 
@@ -67,18 +66,17 @@ func TestPrometheusGeneratesMetrics(t *testing.T) {
 	err := acc.GatherError(p.Gather)
 	require.NoError(t, err)
 
-	require.True(t, acc.HasFloatField("go_gc_duration_seconds", "count"))
-	require.True(t, acc.HasFloatField("go_goroutines", "gauge"))
-	require.True(t, acc.HasFloatField("test_metric", "value"))
-	require.True(t, acc.HasTimestamp("test_metric", time.Unix(1490802350, 0)))
-	require.False(t, acc.HasTag("test_metric", "address"))
-	require.True(t, acc.TagValue("test_metric", "url") == ts.URL+"/metrics")
+	assert.True(t, acc.HasFloatField("go_gc_duration_seconds", "count"))
+	assert.True(t, acc.HasFloatField("go_goroutines", "gauge"))
+	assert.True(t, acc.HasFloatField("test_metric", "value"))
+	assert.True(t, acc.HasTimestamp("test_metric", time.Unix(1490802350, 0)))
+	assert.False(t, acc.HasTag("test_metric", "address"))
+	assert.True(t, acc.TagValue("test_metric", "url") == ts.URL+"/metrics")
 }
 
 func TestPrometheusGeneratesMetricsWithHostNameTag(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := fmt.Fprintln(w, sampleTextFormat)
-		require.NoError(t, err)
+		fmt.Fprintln(w, sampleTextFormat)
 	}))
 	defer ts.Close()
 
@@ -95,12 +93,12 @@ func TestPrometheusGeneratesMetricsWithHostNameTag(t *testing.T) {
 	err := acc.GatherError(p.Gather)
 	require.NoError(t, err)
 
-	require.True(t, acc.HasFloatField("go_gc_duration_seconds", "count"))
-	require.True(t, acc.HasFloatField("go_goroutines", "gauge"))
-	require.True(t, acc.HasFloatField("test_metric", "value"))
-	require.True(t, acc.HasTimestamp("test_metric", time.Unix(1490802350, 0)))
-	require.True(t, acc.TagValue("test_metric", "address") == tsAddress)
-	require.True(t, acc.TagValue("test_metric", "url") == ts.URL)
+	assert.True(t, acc.HasFloatField("go_gc_duration_seconds", "count"))
+	assert.True(t, acc.HasFloatField("go_goroutines", "gauge"))
+	assert.True(t, acc.HasFloatField("test_metric", "value"))
+	assert.True(t, acc.HasTimestamp("test_metric", time.Unix(1490802350, 0)))
+	assert.True(t, acc.TagValue("test_metric", "address") == tsAddress)
+	assert.True(t, acc.TagValue("test_metric", "url") == ts.URL)
 }
 
 func TestPrometheusGeneratesMetricsAlthoughFirstDNSFailsIntegration(t *testing.T) {
@@ -109,8 +107,7 @@ func TestPrometheusGeneratesMetricsAlthoughFirstDNSFailsIntegration(t *testing.T
 	}
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := fmt.Fprintln(w, sampleTextFormat)
-		require.NoError(t, err)
+		fmt.Fprintln(w, sampleTextFormat)
 	}))
 	defer ts.Close()
 
@@ -125,16 +122,15 @@ func TestPrometheusGeneratesMetricsAlthoughFirstDNSFailsIntegration(t *testing.T
 	err := acc.GatherError(p.Gather)
 	require.NoError(t, err)
 
-	require.True(t, acc.HasFloatField("go_gc_duration_seconds", "count"))
-	require.True(t, acc.HasFloatField("go_goroutines", "gauge"))
-	require.True(t, acc.HasFloatField("test_metric", "value"))
-	require.True(t, acc.HasTimestamp("test_metric", time.Unix(1490802350, 0)))
+	assert.True(t, acc.HasFloatField("go_gc_duration_seconds", "count"))
+	assert.True(t, acc.HasFloatField("go_goroutines", "gauge"))
+	assert.True(t, acc.HasFloatField("test_metric", "value"))
+	assert.True(t, acc.HasTimestamp("test_metric", time.Unix(1490802350, 0)))
 }
 
 func TestPrometheusGeneratesSummaryMetricsV2(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := fmt.Fprintln(w, sampleSummaryTextFormat)
-		require.NoError(t, err)
+		fmt.Fprintln(w, sampleSummaryTextFormat)
 	}))
 	defer ts.Close()
 
@@ -149,10 +145,11 @@ func TestPrometheusGeneratesSummaryMetricsV2(t *testing.T) {
 	err := acc.GatherError(p.Gather)
 	require.NoError(t, err)
 
-	require.True(t, acc.TagSetValue("prometheus", "quantile") == "0")
-	require.True(t, acc.HasFloatField("prometheus", "go_gc_duration_seconds_sum"))
-	require.True(t, acc.HasFloatField("prometheus", "go_gc_duration_seconds_count"))
-	require.True(t, acc.TagValue("prometheus", "url") == ts.URL+"/metrics")
+	assert.True(t, acc.TagSetValue("prometheus", "quantile") == "0")
+	assert.True(t, acc.HasFloatField("prometheus", "go_gc_duration_seconds_sum"))
+	assert.True(t, acc.HasFloatField("prometheus", "go_gc_duration_seconds_count"))
+	assert.True(t, acc.TagValue("prometheus", "url") == ts.URL+"/metrics")
+
 }
 
 func TestSummaryMayContainNaN(t *testing.T) {
@@ -164,8 +161,7 @@ go_gc_duration_seconds_sum 42.0
 go_gc_duration_seconds_count 42
 `
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := fmt.Fprintln(w, data)
-		require.NoError(t, err)
+		fmt.Fprintln(w, data)
 	}))
 	defer ts.Close()
 
@@ -221,8 +217,7 @@ go_gc_duration_seconds_count 42
 
 func TestPrometheusGeneratesGaugeMetricsV2(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := fmt.Fprintln(w, sampleGaugeTextFormat)
-		require.NoError(t, err)
+		fmt.Fprintln(w, sampleGaugeTextFormat)
 	}))
 	defer ts.Close()
 
@@ -237,32 +232,9 @@ func TestPrometheusGeneratesGaugeMetricsV2(t *testing.T) {
 	err := acc.GatherError(p.Gather)
 	require.NoError(t, err)
 
-	require.True(t, acc.HasFloatField("prometheus", "go_goroutines"))
-	require.True(t, acc.TagValue("prometheus", "url") == ts.URL+"/metrics")
-	require.True(t, acc.HasTimestamp("prometheus", time.Unix(1490802350, 0)))
-}
-
-func TestPrometheusGeneratesMetricsWithIgnoreTimestamp(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := fmt.Fprintln(w, sampleTextFormat)
-		require.NoError(t, err)
-	}))
-	defer ts.Close()
-
-	p := &Prometheus{
-		Log:             testutil.Logger{},
-		URLs:            []string{ts.URL},
-		URLTag:          "url",
-		IgnoreTimestamp: true,
-	}
-
-	var acc testutil.Accumulator
-
-	err := acc.GatherError(p.Gather)
-	require.NoError(t, err)
-
-	m, _ := acc.Get("test_metric")
-	require.WithinDuration(t, time.Now(), m.Time, 5*time.Second)
+	assert.True(t, acc.HasFloatField("prometheus", "go_goroutines"))
+	assert.True(t, acc.TagValue("prometheus", "url") == ts.URL+"/metrics")
+	assert.True(t, acc.HasTimestamp("prometheus", time.Unix(1490802350, 0)))
 }
 
 func TestUnsupportedFieldSelector(t *testing.T) {
@@ -271,8 +243,8 @@ func TestUnsupportedFieldSelector(t *testing.T) {
 
 	fieldSelector, _ := fields.ParseSelector(prom.KubernetesFieldSelector)
 	isValid, invalidSelector := fieldSelectorIsSupported(fieldSelector)
-	require.Equal(t, false, isValid)
-	require.Equal(t, "spec.containerName", invalidSelector)
+	assert.Equal(t, false, isValid)
+	assert.Equal(t, "spec.containerName", invalidSelector)
 }
 
 func TestInitConfigErrors(t *testing.T) {
@@ -288,26 +260,25 @@ func TestInitConfigErrors(t *testing.T) {
 
 	// Both invalid IP addresses
 	p.NodeIP = "10.240.0.0.0"
-	require.NoError(t, os.Setenv("NODE_IP", "10.000.0.0.0"))
+	os.Setenv("NODE_IP", "10.000.0.0.0")
 	err := p.Init()
-	require.Error(t, err)
-	expectedMessage := "the node_ip config and the environment variable NODE_IP are not set or invalid; cannot get pod list for monitor_kubernetes_pods using node scrape scope"
-	require.Equal(t, expectedMessage, err.Error())
-	require.NoError(t, os.Setenv("NODE_IP", "10.000.0.0"))
+	expectedMessage := "The node_ip config and the environment variable NODE_IP are not set or invalid. Cannot get pod list for monitor_kubernetes_pods using node scrape scope"
+	assert.Equal(t, expectedMessage, err.Error())
+	os.Setenv("NODE_IP", "10.000.0.0")
 
 	p.KubernetesLabelSelector = "label0==label0, label0 in (=)"
 	err = p.Init()
-	expectedMessage = "error parsing the specified label selector(s): unable to parse requirement: found '=', expected: ',', ')' or identifier"
-	require.Error(t, err, expectedMessage)
+	expectedMessage = "Error parsing the specified label selector(s): unable to parse requirement: found '=', expected: ',', ')' or identifier"
+	assert.Equal(t, expectedMessage, err.Error())
 	p.KubernetesLabelSelector = "label0==label"
 
 	p.KubernetesFieldSelector = "field,"
 	err = p.Init()
-	expectedMessage = "error parsing the specified field selector(s): invalid selector: 'field,'; can't understand 'field'"
-	require.Error(t, err, expectedMessage)
+	expectedMessage = "Error parsing the specified field selector(s): invalid selector: 'field,'; can't understand 'field'"
+	assert.Equal(t, expectedMessage, err.Error())
 
 	p.KubernetesFieldSelector = "spec.containerNames=containerNames"
 	err = p.Init()
-	expectedMessage = "the field selector spec.containerNames is not supported for pods"
-	require.Error(t, err, expectedMessage)
+	expectedMessage = "The field selector spec.containerNames is not supported for pods"
+	assert.Equal(t, expectedMessage, err.Error())
 }

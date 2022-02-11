@@ -3,7 +3,8 @@ package shim
 import (
 	"errors"
 	"fmt"
-	"log" //nolint:revive // Allow exceptional but valid use of log here.
+	"io/ioutil"
+	"log"
 	"os"
 
 	"github.com/BurntSushi/toml"
@@ -52,12 +53,14 @@ func LoadConfig(filePath *string) (loaded loadedConfig, err error) {
 	var data string
 	conf := config{}
 	if filePath != nil && *filePath != "" {
-		b, err := os.ReadFile(*filePath)
+
+		b, err := ioutil.ReadFile(*filePath)
 		if err != nil {
 			return loadedConfig{}, err
 		}
 
 		data = expandEnvVars(b)
+
 	} else {
 		conf, err = DefaultImportedPlugins()
 		if err != nil {

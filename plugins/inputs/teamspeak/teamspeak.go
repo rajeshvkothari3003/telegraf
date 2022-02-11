@@ -55,10 +55,7 @@ func (ts *Teamspeak) Gather(acc telegraf.Accumulator) error {
 	}
 
 	for _, vserver := range ts.VirtualServers {
-		if err := ts.client.Use(vserver); err != nil {
-			ts.connected = false
-			return err
-		}
+		ts.client.Use(vserver)
 
 		sm, err := ts.client.Server.Info()
 		if err != nil {

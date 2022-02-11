@@ -1,4 +1,3 @@
-//go:build !windows
 // +build !windows
 
 package processes
@@ -6,6 +5,7 @@ package processes
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -191,7 +191,7 @@ func (p *Processes) gatherFromProc(fields map[string]interface{}) error {
 }
 
 func readProcFile(filename string) ([]byte, error) {
-	data, err := os.ReadFile(filename)
+	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

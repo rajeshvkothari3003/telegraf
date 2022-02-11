@@ -2,8 +2,9 @@ package kube_inventory
 
 import (
 	"context"
+	"time"
 
-	v1 "k8s.io/api/apps/v1"
+	"github.com/ericchiang/k8s/apis/apps/v1"
 
 	"github.com/influxdata/telegraf"
 )
@@ -15,35 +16,36 @@ func collectStatefulSets(ctx context.Context, acc telegraf.Accumulator, ki *Kube
 		return
 	}
 	for _, s := range list.Items {
-		ki.gatherStatefulSet(s, acc)
+		if err = ki.gatherStatefulSet(*s, acc); err != nil {
+			acc.AddError(err)
+			return
+		}
 	}
 }
 
-func (ki *KubernetesInventory) gatherStatefulSet(s v1.StatefulSet, acc telegraf.Accumulator) {
+func (ki *KubernetesInventory) gatherStatefulSet(s v1.StatefulSet, acc telegraf.Accumulator) error {
 	status := s.Status
 	fields := map[string]interface{}{
-		"created":             s.GetCreationTimestamp().UnixNano(),
-		"generation":          s.Generation,
-		"replicas":            status.Replicas,
-		"replicas_current":    status.CurrentReplicas,
-		"replicas_ready":      status.ReadyReplicas,
-		"replicas_updated":    status.UpdatedReplicas,
-		"observed_generation": s.Status.ObservedGeneration,
-	}
-	if s.Spec.Replicas != nil {
-		fields["spec_replicas"] = *s.Spec.Replicas
+		"created":             time.Unix(s.Metadata.CreationTimestamp.GetSeconds(), int64(s.Metadata.CreationTimestamp.GetNanos())).UnixNano(),
+		"generation":          *s.Metadata.Generation,
+		"replicas":            *status.Replicas,
+		"replicas_current":    *status.CurrentReplicas,
+		"replicas_ready":      *status.ReadyReplicas,
+		"replicas_updated":    *status.UpdatedReplicas,
+		"spec_replicas":       *s.Spec.Replicas,
+		"observed_generation": *s.Status.ObservedGeneration,
 	}
 	tags := map[string]string{
-		"statefulset_name": s.Name,
-		"namespace":        s.Namespace,
+		"statefulset_name": *s.Metadata.Name,
+		"namespace":        *s.Metadata.Namespace,
 	}
-	if s.Spec.Selector != nil {
-		for key, val := range s.Spec.Selector.MatchLabels {
-			if ki.selectorFilter.Match(key) {
-				tags["selector_"+key] = val
-			}
+	for key, val := range s.GetSpec().GetSelector().GetMatchLabels() {
+		if ki.selectorFilter.Match(key) {
+			tags["selector_"+key] = val
 		}
 	}
 
 	acc.AddFields(statefulSetMeasurement, fields, tags)
+
+	return nil
 }

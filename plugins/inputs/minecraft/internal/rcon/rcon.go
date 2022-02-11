@@ -67,19 +67,15 @@ func (p Packet) Compile() (payload []byte, err error) {
 	var padding [PacketPaddingSize]byte
 
 	if err = binary.Write(&buffer, binary.LittleEndian, &size); nil != err {
-		return nil, err
+		return
 	} else if err = binary.Write(&buffer, binary.LittleEndian, &p.Header.Challenge); nil != err {
-		return nil, err
+		return
 	} else if err = binary.Write(&buffer, binary.LittleEndian, &p.Header.Type); nil != err {
-		return nil, err
+		return
 	}
 
-	if _, err = buffer.WriteString(p.Body); err != nil {
-		return nil, err
-	}
-	if _, err = buffer.Write(padding[:]); err != nil {
-		return nil, err
-	}
+	buffer.WriteString(p.Body)
+	buffer.Write(padding[:])
 
 	return buffer.Bytes(), nil
 }
@@ -95,13 +91,16 @@ func NewPacket(challenge, typ int32, body string) (packet *Packet) {
 // or a potential error.
 func (c *Client) Authorize(password string) (response *Packet, err error) {
 	if response, err = c.Send(Auth, password); nil == err {
-		if response.Header.Type != AuthResponse {
-			return nil, ErrFailedAuthorization
+		if response.Header.Type == AuthResponse {
+			c.Authorized = true
+		} else {
+			err = ErrFailedAuthorization
+			response = nil
+			return
 		}
-		c.Authorized = true
 	}
 
-	return response, err
+	return
 }
 
 // Execute calls Send with the appropriate command type and the provided
@@ -111,95 +110,90 @@ func (c *Client) Execute(command string) (response *Packet, err error) {
 	return c.Send(Exec, command)
 }
 
-// Send accepts the commands type and its string to execute to the clients server,
+// Sends accepts the commands type and its string to execute to the clients server,
 // creating a packet with a random challenge id for the server to mirror,
 // and compiling its payload bytes in the appropriate order. The response is
 // decompiled from its bytes into a Packet type for return. An error is returned
 // if send fails.
-func (c *Client) Send(typ int32, command string) (*Packet, error) {
+func (c *Client) Send(typ int32, command string) (response *Packet, err error) {
 	if typ != Auth && !c.Authorized {
-		return nil, ErrUnauthorizedRequest
+		err = ErrUnauthorizedRequest
+		return
 	}
 
 	// Create a random challenge for the server to mirror in its response.
 	var challenge int32
-	if err := binary.Read(rand.Reader, binary.LittleEndian, &challenge); nil != err {
-		return nil, err
-	}
+	binary.Read(rand.Reader, binary.LittleEndian, &challenge)
 
 	// Create the packet from the challenge, typ and command
 	// and compile it to its byte payload
 	packet := NewPacket(challenge, typ, command)
 	payload, err := packet.Compile()
-	if nil != err {
-		return nil, err
-	}
 
-	n, err := c.Connection.Write(payload)
+	var n int
+
 	if nil != err {
-		return nil, err
-	}
-	if n != len(payload) {
-		return nil, ErrInvalidWrite
+		return
+	} else if n, err = c.Connection.Write(payload); nil != err {
+		return
+	} else if n != len(payload) {
+		err = ErrInvalidWrite
+		return
 	}
 
 	var header Header
-	if err := binary.Read(c.Connection, binary.LittleEndian, &header.Size); nil != err {
-		return nil, err
-	}
-	if err := binary.Read(c.Connection, binary.LittleEndian, &header.Challenge); nil != err {
-		return nil, err
-	}
-	if err := binary.Read(c.Connection, binary.LittleEndian, &header.Type); nil != err {
-		return nil, err
+
+	if err = binary.Read(c.Connection, binary.LittleEndian, &header.Size); nil != err {
+		return
+	} else if err = binary.Read(c.Connection, binary.LittleEndian, &header.Challenge); nil != err {
+		return
+	} else if err = binary.Read(c.Connection, binary.LittleEndian, &header.Type); nil != err {
+		return
 	}
 
 	if packet.Header.Type == Auth && header.Type == ResponseValue {
 		// Discard, empty SERVERDATA_RESPONSE_VALUE from authorization.
-		if _, err := c.Connection.Read(make([]byte, header.Size-int32(PacketHeaderSize))); nil != err {
-			return nil, err
-		}
+		c.Connection.Read(make([]byte, header.Size-int32(PacketHeaderSize)))
 
 		// Reread the packet header.
-		if err := binary.Read(c.Connection, binary.LittleEndian, &header.Size); nil != err {
-			return nil, err
-		}
-		if err := binary.Read(c.Connection, binary.LittleEndian, &header.Challenge); nil != err {
-			return nil, err
-		}
-		if err := binary.Read(c.Connection, binary.LittleEndian, &header.Type); nil != err {
-			return nil, err
+		if err = binary.Read(c.Connection, binary.LittleEndian, &header.Size); nil != err {
+			return
+		} else if err = binary.Read(c.Connection, binary.LittleEndian, &header.Challenge); nil != err {
+			return
+		} else if err = binary.Read(c.Connection, binary.LittleEndian, &header.Type); nil != err {
+			return
 		}
 	}
 
 	if header.Challenge != packet.Header.Challenge {
-		return nil, ErrInvalidChallenge
+		err = ErrInvalidChallenge
+		return
 	}
 
 	body := make([]byte, header.Size-int32(PacketHeaderSize))
 	n, err = c.Connection.Read(body)
+
 	for n < len(body) {
 		var nBytes int
 		nBytes, err = c.Connection.Read(body[n:])
 		if err != nil {
-			return nil, err
+			return
 		}
 		n += nBytes
 	}
 
-	// Shouldn't this be moved up to the first read?
 	if nil != err {
-		return nil, err
-	}
-	if n != len(body) {
-		return nil, ErrInvalidRead
+		return
+	} else if n != len(body) {
+		err = ErrInvalidRead
+		return
 	}
 
-	response := new(Packet)
+	response = new(Packet)
 	response.Header = header
 	response.Body = strings.TrimRight(string(body), TerminationSequence)
 
-	return response, nil
+	return
 }
 
 // NewClient creates a new Client type, creating the connection
@@ -210,5 +204,5 @@ func NewClient(host string, port int) (client *Client, err error) {
 	client.Host = host
 	client.Port = port
 	client.Connection, err = net.Dial("tcp", fmt.Sprintf("%v:%v", client.Host, client.Port))
-	return client, err
+	return
 }

@@ -9,6 +9,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"math/big"
 	"net"
 	"net/url"
@@ -25,15 +27,16 @@ import (
 // SELF SIGNED CERT FUNCTIONS
 
 func newTempDir() (string, error) {
-	dir, err := os.MkdirTemp("", "ssc")
+	dir, err := ioutil.TempDir("", "ssc")
 	return dir, err
 }
 
-func generateCert(host string, rsaBits int, certFile, keyFile string, dur time.Duration) (cert string, key string, err error) {
+func generateCert(host string, rsaBits int, certFile, keyFile string, dur time.Duration) (string, string) {
+
 	dir, _ := newTempDir()
 
 	if len(host) == 0 {
-		return "", "", fmt.Errorf("missing required host parameter")
+		log.Fatalf("Missing required host parameter")
 	}
 	if rsaBits == 0 {
 		rsaBits = 2048
@@ -47,7 +50,7 @@ func generateCert(host string, rsaBits int, certFile, keyFile string, dur time.D
 
 	priv, err := rsa.GenerateKey(rand.Reader, rsaBits)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to generate private key: %s", err)
+		log.Fatalf("failed to generate private key: %s", err)
 	}
 
 	notBefore := time.Now()
@@ -56,7 +59,7 @@ func generateCert(host string, rsaBits int, certFile, keyFile string, dur time.D
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to generate serial number: %s", err)
+		log.Fatalf("failed to generate serial number: %s", err)
 	}
 
 	template := x509.Certificate{
@@ -86,36 +89,33 @@ func generateCert(host string, rsaBits int, certFile, keyFile string, dur time.D
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, publicKey(priv), priv)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create certificate: %s", err)
+		log.Fatalf("Failed to create certificate: %s", err)
 	}
 
 	certOut, err := os.Create(certFile)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to open %s for writing: %s", certFile, err)
+		log.Fatalf("failed to open %s for writing: %s", certFile, err)
 	}
 	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-		return "", "", fmt.Errorf("failed to write data to %s: %s", certFile, err)
+		log.Fatalf("failed to write data to %s: %s", certFile, err)
 	}
 	if err := certOut.Close(); err != nil {
-		return "", "", fmt.Errorf("error closing %s: %s", certFile, err)
+		log.Fatalf("error closing %s: %s", certFile, err)
 	}
 
 	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to open %s for writing: %s", keyFile, err)
+		log.Printf("failed to open %s for writing: %s", keyFile, err)
+		return "", ""
 	}
-	keyBlock, err := pemBlockForKey(priv)
-	if err != nil {
-		return "", "", fmt.Errorf("error generating block: %v", err)
-	}
-	if err := pem.Encode(keyOut, keyBlock); err != nil {
-		return "", "", fmt.Errorf("failed to write data to %s: %s", keyFile, err)
+	if err := pem.Encode(keyOut, pemBlockForKey(priv)); err != nil {
+		log.Fatalf("failed to write data to %s: %s", keyFile, err)
 	}
 	if err := keyOut.Close(); err != nil {
-		return "", "", fmt.Errorf("error closing %s: %s", keyFile, err)
+		log.Fatalf("error closing %s: %s", keyFile, err)
 	}
 
-	return certFile, keyFile, nil
+	return certFile, keyFile
 }
 
 func publicKey(priv interface{}) interface{} {
@@ -129,23 +129,25 @@ func publicKey(priv interface{}) interface{} {
 	}
 }
 
-func pemBlockForKey(priv interface{}) (*pem.Block, error) {
+func pemBlockForKey(priv interface{}) *pem.Block {
 	switch k := priv.(type) {
 	case *rsa.PrivateKey:
-		return &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}, nil
+		return &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}
 	case *ecdsa.PrivateKey:
 		b, err := x509.MarshalECPrivateKey(k)
 		if err != nil {
-			return nil, fmt.Errorf("unable to marshal ECDSA private key: %v", err)
+			fmt.Fprintf(os.Stderr, "Unable to marshal ECDSA private key: %v", err)
+			os.Exit(2)
 		}
-		return &pem.Block{Type: "EC PRIVATE KEY", Bytes: b}, nil
+		return &pem.Block{Type: "EC PRIVATE KEY", Bytes: b}
 	default:
-		return nil, nil
+		return nil
 	}
 }
 
-//revive:disable-next-line
-func (o *OpcUA) generateClientOpts(endpoints []*ua.EndpointDescription) ([]opcua.Option, error) {
+// OPT FUNCTIONS
+
+func generateClientOpts(endpoints []*ua.EndpointDescription, certFile, keyFile, policy, mode, auth, username, password string, requestTimeout time.Duration) []opcua.Option {
 	opts := []opcua.Option{}
 	appuri := "urn:telegraf:gopcua:client"
 	appname := "Telegraf"
@@ -153,19 +155,12 @@ func (o *OpcUA) generateClientOpts(endpoints []*ua.EndpointDescription) ([]opcua
 	// ApplicationURI is automatically read from the cert so is not required if a cert if provided
 	opts = append(opts, opcua.ApplicationURI(appuri))
 	opts = append(opts, opcua.ApplicationName(appname))
-	opts = append(opts, opcua.RequestTimeout(time.Duration(o.RequestTimeout)))
 
-	certFile := o.Certificate
-	keyFile := o.PrivateKey
-	policy := o.SecurityPolicy
-	mode := o.SecurityMode
-	var err error
+	opts = append(opts, opcua.RequestTimeout(requestTimeout))
+
 	if certFile == "" && keyFile == "" {
 		if policy != "None" || mode != "None" {
-			certFile, keyFile, err = generateCert(appuri, 2048, certFile, keyFile, 365*24*time.Hour)
-			if err != nil {
-				return nil, err
-			}
+			certFile, keyFile = generateCert(appuri, 2048, certFile, keyFile, (365 * 24 * time.Hour))
 		}
 	}
 
@@ -174,11 +169,11 @@ func (o *OpcUA) generateClientOpts(endpoints []*ua.EndpointDescription) ([]opcua
 		debug.Printf("Loading cert/key from %s/%s", certFile, keyFile)
 		c, err := tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
-			o.Log.Warnf("Failed to load certificate: %s", err)
+			log.Printf("Failed to load certificate: %s", err)
 		} else {
 			pk, ok := c.PrivateKey.(*rsa.PrivateKey)
 			if !ok {
-				return nil, fmt.Errorf("invalid private key")
+				log.Fatalf("Invalid private key")
 			}
 			cert = c.Certificate[0]
 			opts = append(opts, opcua.PrivateKey(pk), opcua.Certificate(cert))
@@ -196,15 +191,11 @@ func (o *OpcUA) generateClientOpts(endpoints []*ua.EndpointDescription) ([]opcua
 		secPolicy = ua.SecurityPolicyURIPrefix + policy
 		policy = ""
 	default:
-		return nil, fmt.Errorf("invalid security policy: %s", policy)
+		log.Fatalf("Invalid security policy: %s", policy)
 	}
 
 	// Select the most appropriate authentication mode from server capabilities and user input
-	authMode, authOption, err := o.generateAuth(o.AuthMethod, cert, o.Username, o.Password)
-	if err != nil {
-		return nil, err
-	}
-
+	authMode, authOption := generateAuth(auth, cert, username, password)
 	opts = append(opts, authOption)
 
 	var secMode ua.MessageSecurityMode
@@ -220,7 +211,7 @@ func (o *OpcUA) generateClientOpts(endpoints []*ua.EndpointDescription) ([]opcua
 		secMode = ua.MessageSecurityModeSignAndEncrypt
 		mode = ""
 	default:
-		return nil, fmt.Errorf("invalid security mode: %s", mode)
+		log.Fatalf("Invalid security mode: %s", mode)
 	}
 
 	// Allow input of only one of sec-mode,sec-policy when choosing 'None'
@@ -262,23 +253,24 @@ func (o *OpcUA) generateClientOpts(endpoints []*ua.EndpointDescription) ([]opcua
 	}
 
 	if serverEndpoint == nil { // Didn't find an endpoint with matching policy and mode.
-		return nil, fmt.Errorf("unable to find suitable server endpoint with selected sec-policy and sec-mode")
+		log.Printf("unable to find suitable server endpoint with selected sec-policy and sec-mode")
+		log.Fatalf("quitting")
 	}
 
 	secPolicy = serverEndpoint.SecurityPolicyURI
 	secMode = serverEndpoint.SecurityMode
 
 	// Check that the selected endpoint is a valid combo
-	err = validateEndpointConfig(endpoints, secPolicy, secMode, authMode)
+	err := validateEndpointConfig(endpoints, secPolicy, secMode, authMode)
 	if err != nil {
-		return nil, fmt.Errorf("error validating input: %s", err)
+		log.Fatalf("error validating input: %s", err)
 	}
 
 	opts = append(opts, opcua.SecurityFromEndpoint(serverEndpoint, authMode))
-	return opts, nil
+	return opts
 }
 
-func (o *OpcUA) generateAuth(a string, cert []byte, un, pw string) (ua.UserTokenType, opcua.Option, error) {
+func generateAuth(a string, cert []byte, un, pw string) (ua.UserTokenType, opcua.Option) {
 	var err error
 
 	var authMode ua.UserTokenType
@@ -293,13 +285,13 @@ func (o *OpcUA) generateAuth(a string, cert []byte, un, pw string) (ua.UserToken
 
 		if un == "" {
 			if err != nil {
-				return 0, nil, fmt.Errorf("error reading the username input: %s", err)
+				log.Fatalf("error reading username input: %s", err)
 			}
 		}
 
 		if pw == "" {
 			if err != nil {
-				return 0, nil, fmt.Errorf("error reading the password input: %s", err)
+				log.Fatalf("error reading username input: %s", err)
 			}
 		}
 
@@ -315,12 +307,13 @@ func (o *OpcUA) generateAuth(a string, cert []byte, un, pw string) (ua.UserToken
 		authOption = opcua.AuthIssuedToken([]byte(nil))
 
 	default:
-		o.Log.Warnf("unknown auth-mode, defaulting to Anonymous")
+		log.Printf("unknown auth-mode, defaulting to Anonymous")
 		authMode = ua.UserTokenTypeAnonymous
 		authOption = opcua.AuthAnonymous()
+
 	}
 
-	return authMode, authOption, nil
+	return authMode, authOption
 }
 
 func validateEndpointConfig(endpoints []*ua.EndpointDescription, secPolicy string, secMode ua.MessageSecurityMode, authMode ua.UserTokenType) error {

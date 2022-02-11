@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/internal/globpath"
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"github.com/karrick/godirwalk"
@@ -57,8 +57,8 @@ type FileCount struct {
 	Recursive      bool
 	RegularOnly    bool
 	FollowSymlinks bool
-	Size           config.Size
-	MTime          config.Duration `toml:"mtime"`
+	Size           internal.Size
+	MTime          internal.Duration `toml:"mtime"`
 	fileFilters    []fileFilterFunc
 	globPaths      []globpath.GlobPath
 	Fs             fileSystem
@@ -108,7 +108,7 @@ func (fc *FileCount) regularOnlyFilter() fileFilterFunc {
 }
 
 func (fc *FileCount) sizeFilter() fileFilterFunc {
-	if fc.Size == 0 {
+	if fc.Size.Size == 0 {
 		return nil
 	}
 
@@ -116,22 +116,22 @@ func (fc *FileCount) sizeFilter() fileFilterFunc {
 		if !f.Mode().IsRegular() {
 			return false, nil
 		}
-		if fc.Size < 0 {
-			return f.Size() < -int64(fc.Size), nil
+		if fc.Size.Size < 0 {
+			return f.Size() < -fc.Size.Size, nil
 		}
-		return f.Size() >= int64(fc.Size), nil
+		return f.Size() >= fc.Size.Size, nil
 	}
 }
 
 func (fc *FileCount) mtimeFilter() fileFilterFunc {
-	if time.Duration(fc.MTime) == 0 {
+	if fc.MTime.Duration == 0 {
 		return nil
 	}
 
 	return func(f os.FileInfo) (bool, error) {
-		age := absDuration(time.Duration(fc.MTime))
+		age := absDuration(fc.MTime.Duration)
 		mtime := time.Now().Add(-age)
-		if time.Duration(fc.MTime) < 0 {
+		if fc.MTime.Duration < 0 {
 			return f.ModTime().After(mtime), nil
 		}
 		return f.ModTime().Before(mtime), nil
@@ -292,6 +292,7 @@ func (fc *FileCount) initGlobPaths(acc telegraf.Accumulator) {
 			fc.globPaths = append(fc.globPaths, *glob)
 		}
 	}
+
 }
 
 func NewFileCount() *FileCount {
@@ -302,8 +303,8 @@ func NewFileCount() *FileCount {
 		Recursive:      true,
 		RegularOnly:    true,
 		FollowSymlinks: false,
-		Size:           config.Size(0),
-		MTime:          config.Duration(0),
+		Size:           internal.Size{Size: 0},
+		MTime:          internal.Duration{Duration: 0},
 		fileFilters:    nil,
 		Fs:             osFS{},
 	}

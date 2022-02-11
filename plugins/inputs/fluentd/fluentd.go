@@ -3,7 +3,7 @@ package fluentd
 import (
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
@@ -62,12 +62,15 @@ func parse(data []byte) (datapointArray []pluginData, err error) {
 	var endpointData endpointInfo
 
 	if err = json.Unmarshal(data, &endpointData); err != nil {
-		err = fmt.Errorf("processing JSON structure")
-		return nil, err
+		err = fmt.Errorf("Processing JSON structure")
+		return
 	}
 
-	datapointArray = append(datapointArray, endpointData.Payload...)
-	return datapointArray, err
+	for _, point := range endpointData.Payload {
+		datapointArray = append(datapointArray, point)
+	}
+
+	return
 }
 
 // Description - display description
@@ -78,19 +81,21 @@ func (h *Fluentd) SampleConfig() string { return sampleConfig }
 
 // Gather - Main code responsible for gathering, processing and creating metrics
 func (h *Fluentd) Gather(acc telegraf.Accumulator) error {
+
 	_, err := url.Parse(h.Endpoint)
 	if err != nil {
-		return fmt.Errorf("invalid URL \"%s\"", h.Endpoint)
+		return fmt.Errorf("Invalid URL \"%s\"", h.Endpoint)
 	}
 
 	if h.client == nil {
+
 		tr := &http.Transport{
-			ResponseHeaderTimeout: 3 * time.Second,
+			ResponseHeaderTimeout: time.Duration(3 * time.Second),
 		}
 
 		client := &http.Client{
 			Transport: tr,
-			Timeout:   4 * time.Second,
+			Timeout:   time.Duration(4 * time.Second),
 		}
 
 		h.client = client
@@ -99,15 +104,15 @@ func (h *Fluentd) Gather(acc telegraf.Accumulator) error {
 	resp, err := h.client.Get(h.Endpoint)
 
 	if err != nil {
-		return fmt.Errorf("unable to perform HTTP client GET on \"%s\": %v", h.Endpoint, err)
+		return fmt.Errorf("Unable to perform HTTP client GET on \"%s\": %s", h.Endpoint, err)
 	}
 
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		return fmt.Errorf("unable to read the HTTP body \"%s\": %v", string(body), err)
+		return fmt.Errorf("Unable to read the HTTP body \"%s\": %s", string(body), err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -117,11 +122,12 @@ func (h *Fluentd) Gather(acc telegraf.Accumulator) error {
 	dataPoints, err := parse(body)
 
 	if err != nil {
-		return fmt.Errorf("problem with parsing")
+		return fmt.Errorf("Problem with parsing")
 	}
 
 	// Go through all plugins one by one
 	for _, p := range dataPoints {
+
 		skip := false
 
 		// Check if this specific type was excluded in configuration
@@ -143,6 +149,7 @@ func (h *Fluentd) Gather(acc telegraf.Accumulator) error {
 
 			if p.BufferQueueLength != nil {
 				tmpFields["buffer_queue_length"] = *p.BufferQueueLength
+
 			}
 			if p.RetryCount != nil {
 				tmpFields["retry_count"] = *p.RetryCount

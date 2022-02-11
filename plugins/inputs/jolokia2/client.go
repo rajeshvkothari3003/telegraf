@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
@@ -95,7 +95,7 @@ type jolokiaResponse struct {
 	Status  int            `json:"status"`
 }
 
-func NewClient(address string, config *ClientConfig) (*Client, error) {
+func NewClient(url string, config *ClientConfig) (*Client, error) {
 	tlsConfig, err := config.ClientConfig.TLSConfig()
 	if err != nil {
 		return nil, err
@@ -112,7 +112,7 @@ func NewClient(address string, config *ClientConfig) (*Client, error) {
 	}
 
 	return &Client{
-		URL:    address,
+		URL:    url,
 		config: config,
 		client: client,
 	}, nil
@@ -149,7 +149,7 @@ func (c *Client) read(requests []ReadRequest) ([]ReadResponse, error) {
 			c.URL, resp.StatusCode, http.StatusText(resp.StatusCode), http.StatusOK, http.StatusText(http.StatusOK))
 	}
 
-	responseBody, err := io.ReadAll(resp.Body)
+	responseBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}

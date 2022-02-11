@@ -1,6 +1,7 @@
 package warp10
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/influxdata/telegraf/testutil"
@@ -59,7 +60,7 @@ func TestHandleWarp10Error(t *testing.T) {
 			</body>
 			</html>
 			`,
-			Expected: "Invalid token",
+			Expected: fmt.Sprintf("Invalid token"),
 		},
 		{
 			Message: `
@@ -74,7 +75,7 @@ func TestHandleWarp10Error(t *testing.T) {
 			</body>
 			</html>
 			`,
-			Expected: "Token Expired",
+			Expected: fmt.Sprintf("Token Expired"),
 		},
 		{
 			Message: `
@@ -89,7 +90,7 @@ func TestHandleWarp10Error(t *testing.T) {
 			</body>
 			</html>
 			`,
-			Expected: "Token revoked",
+			Expected: fmt.Sprintf("Token revoked"),
 		},
 		{
 			Message: `
@@ -116,4 +117,5 @@ func TestHandleWarp10Error(t *testing.T) {
 		payload := w.HandleError(handledError.Message, 511)
 		require.Exactly(t, handledError.Expected, payload)
 	}
+
 }

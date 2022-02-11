@@ -1,12 +1,13 @@
 package mysql
 
 import (
+	"database/sql"
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMysqlDefaultsToLocalIntegration(t *testing.T) {
@@ -22,7 +23,7 @@ func TestMysqlDefaultsToLocalIntegration(t *testing.T) {
 	err := m.Gather(&acc)
 	require.NoError(t, err)
 
-	require.True(t, acc.HasMeasurement("mysql"))
+	assert.True(t, acc.HasMeasurement("mysql"))
 }
 
 func TestMysqlMultipleInstancesIntegration(t *testing.T) {
@@ -42,9 +43,9 @@ func TestMysqlMultipleInstancesIntegration(t *testing.T) {
 	var acc, acc2 testutil.Accumulator
 	err := m.Gather(&acc)
 	require.NoError(t, err)
-	require.True(t, acc.HasMeasurement("mysql"))
+	assert.True(t, acc.HasMeasurement("mysql"))
 	// acc should have global variables
-	require.True(t, acc.HasMeasurement("mysql_variables"))
+	assert.True(t, acc.HasMeasurement("mysql_variables"))
 
 	m2 := &Mysql{
 		Servers:       []string{testServer},
@@ -52,9 +53,9 @@ func TestMysqlMultipleInstancesIntegration(t *testing.T) {
 	}
 	err = m2.Gather(&acc2)
 	require.NoError(t, err)
-	require.True(t, acc2.HasMeasurement("mysql"))
+	assert.True(t, acc2.HasMeasurement("mysql"))
 	// acc2 should not have global variables
-	require.False(t, acc2.HasMeasurement("mysql_variables"))
+	assert.False(t, acc2.HasMeasurement("mysql_variables"))
 }
 
 func TestMysqlMultipleInits(t *testing.T) {
@@ -64,16 +65,16 @@ func TestMysqlMultipleInits(t *testing.T) {
 	m2 := &Mysql{}
 
 	m.InitMysql()
-	require.True(t, m.initDone)
-	require.False(t, m2.initDone)
-	require.Equal(t, m.scanIntervalSlow, uint32(30))
-	require.Equal(t, m2.scanIntervalSlow, uint32(0))
+	assert.True(t, m.initDone)
+	assert.False(t, m2.initDone)
+	assert.Equal(t, m.scanIntervalSlow, uint32(30))
+	assert.Equal(t, m2.scanIntervalSlow, uint32(0))
 
 	m2.InitMysql()
-	require.True(t, m.initDone)
-	require.True(t, m2.initDone)
-	require.Equal(t, m.scanIntervalSlow, uint32(30))
-	require.Equal(t, m2.scanIntervalSlow, uint32(0))
+	assert.True(t, m.initDone)
+	assert.True(t, m2.initDone)
+	assert.Equal(t, m.scanIntervalSlow, uint32(30))
+	assert.Equal(t, m2.scanIntervalSlow, uint32(0))
 }
 
 func TestMysqlGetDSNTag(t *testing.T) {
@@ -177,7 +178,31 @@ func TestMysqlDNSAddTimeout(t *testing.T) {
 		}
 	}
 }
-
+func TestParseValue(t *testing.T) {
+	testCases := []struct {
+		rawByte   sql.RawBytes
+		output    interface{}
+		boolValue bool
+	}{
+		{sql.RawBytes("123"), int64(123), true},
+		{sql.RawBytes("abc"), "abc", true},
+		{sql.RawBytes("10.1"), 10.1, true},
+		{sql.RawBytes("ON"), 1, true},
+		{sql.RawBytes("OFF"), 0, true},
+		{sql.RawBytes("NO"), 0, true},
+		{sql.RawBytes("YES"), 1, true},
+		{sql.RawBytes("No"), 0, true},
+		{sql.RawBytes("Yes"), 1, true},
+		{sql.RawBytes("-794"), int64(-794), true},
+		{sql.RawBytes("18446744073709552333"), float64(18446744073709552000), true},
+		{sql.RawBytes(""), nil, false},
+	}
+	for _, cases := range testCases {
+		if got, ok := parseValue(cases.rawByte); got != cases.output && ok != cases.boolValue {
+			t.Errorf("for %s wanted %t, got %t", string(cases.rawByte), cases.output, got)
+		}
+	}
+}
 func TestNewNamespace(t *testing.T) {
 	testCases := []struct {
 		words     []string

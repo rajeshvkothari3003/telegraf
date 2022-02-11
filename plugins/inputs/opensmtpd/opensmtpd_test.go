@@ -3,15 +3,17 @@ package opensmtpd
 import (
 	"bytes"
 	"testing"
+	"time"
 
-	"github.com/stretchr/testify/require"
-
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
-func SMTPCTL(output string) func(string, config.Duration, bool) (*bytes.Buffer, error) {
-	return func(string, config.Duration, bool) (*bytes.Buffer, error) {
+var TestTimeout = internal.Duration{Duration: time.Second}
+
+func SMTPCTL(output string, Timeout internal.Duration, useSudo bool) func(string, internal.Duration, bool) (*bytes.Buffer, error) {
+	return func(string, internal.Duration, bool) (*bytes.Buffer, error) {
 		return bytes.NewBuffer([]byte(output)), nil
 	}
 }
@@ -19,15 +21,15 @@ func SMTPCTL(output string) func(string, config.Duration, bool) (*bytes.Buffer, 
 func TestFilterSomeStats(t *testing.T) {
 	acc := &testutil.Accumulator{}
 	v := &Opensmtpd{
-		run: SMTPCTL(fullOutput),
+		run: SMTPCTL(fullOutput, TestTimeout, false),
 	}
 	err := v.Gather(acc)
 
-	require.NoError(t, err)
-	require.True(t, acc.HasMeasurement("opensmtpd"))
-	require.Equal(t, acc.NMetrics(), uint64(1))
+	assert.NoError(t, err)
+	assert.True(t, acc.HasMeasurement("opensmtpd"))
+	assert.Equal(t, acc.NMetrics(), uint64(1))
 
-	require.Equal(t, acc.NFields(), 36)
+	assert.Equal(t, acc.NFields(), 36)
 	acc.AssertContainsFields(t, "opensmtpd", parsedFullOutput)
 }
 

@@ -2,6 +2,7 @@ package github
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/influxdata/telegraf"
@@ -106,7 +107,10 @@ func (s CommitCommentEvent) NewMetric() telegraf.Metric {
 		"commit":  s.Comment.Commit,
 		"comment": s.Comment.Body,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -133,7 +137,10 @@ func (s CreateEvent) NewMetric() telegraf.Metric {
 		"ref":     s.Ref,
 		"refType": s.RefType,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -160,7 +167,10 @@ func (s DeleteEvent) NewMetric() telegraf.Metric {
 		"ref":     s.Ref,
 		"refType": s.RefType,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -188,7 +198,10 @@ func (s DeploymentEvent) NewMetric() telegraf.Metric {
 		"environment": s.Deployment.Environment,
 		"description": s.Deployment.Description,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -219,7 +232,10 @@ func (s DeploymentStatusEvent) NewMetric() telegraf.Metric {
 		"depState":       s.DeploymentStatus.State,
 		"depDescription": s.DeploymentStatus.Description,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -244,7 +260,10 @@ func (s ForkEvent) NewMetric() telegraf.Metric {
 		"issues": s.Repository.Issues,
 		"fork":   s.Forkee.Repository,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -269,7 +288,10 @@ func (s GollumEvent) NewMetric() telegraf.Metric {
 		"forks":  s.Repository.Forks,
 		"issues": s.Repository.Issues,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -298,7 +320,10 @@ func (s IssueCommentEvent) NewMetric() telegraf.Metric {
 		"comments": s.Issue.Comments,
 		"body":     s.Comment.Body,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -327,7 +352,10 @@ func (s IssuesEvent) NewMetric() telegraf.Metric {
 		"title":    s.Issue.Title,
 		"comments": s.Issue.Comments,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -353,7 +381,10 @@ func (s MemberEvent) NewMetric() telegraf.Metric {
 		"newMember":       s.Member.User,
 		"newMemberStatus": s.Member.Admin,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -376,7 +407,10 @@ func (s MembershipEvent) NewMetric() telegraf.Metric {
 		"newMember":       s.Member.User,
 		"newMemberStatus": s.Member.Admin,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -399,7 +433,10 @@ func (s PageBuildEvent) NewMetric() telegraf.Metric {
 		"forks":  s.Repository.Forks,
 		"issues": s.Repository.Issues,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -422,7 +459,10 @@ func (s PublicEvent) NewMetric() telegraf.Metric {
 		"forks":  s.Repository.Forks,
 		"issues": s.Repository.Issues,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -456,7 +496,10 @@ func (s PullRequestEvent) NewMetric() telegraf.Metric {
 		"deletions":    s.PullRequest.Deletions,
 		"changedFiles": s.PullRequest.ChangedFiles,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -491,7 +534,10 @@ func (s PullRequestReviewCommentEvent) NewMetric() telegraf.Metric {
 		"commentFile":  s.Comment.File,
 		"comment":      s.Comment.Comment,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -520,7 +566,10 @@ func (s PushEvent) NewMetric() telegraf.Metric {
 		"before": s.Before,
 		"after":  s.After,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -545,7 +594,10 @@ func (s ReleaseEvent) NewMetric() telegraf.Metric {
 		"issues":  s.Repository.Issues,
 		"tagName": s.Release.TagName,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -568,7 +620,10 @@ func (s RepositoryEvent) NewMetric() telegraf.Metric {
 		"forks":  s.Repository.Forks,
 		"issues": s.Repository.Issues,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -595,7 +650,10 @@ func (s StatusEvent) NewMetric() telegraf.Metric {
 		"commit": s.Commit,
 		"state":  s.State,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -620,7 +678,10 @@ func (s TeamAddEvent) NewMetric() telegraf.Metric {
 		"issues":   s.Repository.Issues,
 		"teamName": s.Team.Name,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }
 
@@ -643,6 +704,9 @@ func (s WatchEvent) NewMetric() telegraf.Metric {
 		"forks":  s.Repository.Forks,
 		"issues": s.Repository.Issues,
 	}
-	m := metric.New(meas, t, f, time.Now())
+	m, err := metric.New(meas, t, f, time.Now())
+	if err != nil {
+		log.Fatalf("Failed to create %v event", event)
+	}
 	return m
 }

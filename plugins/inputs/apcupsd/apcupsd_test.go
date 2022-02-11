@@ -7,13 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/require"
 )
 
-func TestApcupsdDocs(_ *testing.T) {
+func TestApcupsdDocs(t *testing.T) {
 	apc := &ApcUpsd{}
 	apc.Description()
 	apc.SampleConfig()
@@ -36,33 +35,31 @@ func listen(ctx context.Context, t *testing.T, out [][]byte) (string, error) {
 	}
 
 	go func() {
-		defer ln.Close()
-
 		for ctx.Err() == nil {
-			func() {
-				conn, err := ln.Accept()
-				if err != nil {
-					return
-				}
-				defer conn.Close()
-				require.NoError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
+			defer ln.Close()
 
-				in := make([]byte, 128)
-				n, err := conn.Read(in)
-				require.NoError(t, err, "failed to read from connection")
+			conn, err := ln.Accept()
+			if err != nil {
+				continue
+			}
+			defer conn.Close()
+			conn.SetReadDeadline(time.Now().Add(time.Second))
 
-				status := []byte{0, 6, 's', 't', 'a', 't', 'u', 's'}
-				want, got := status, in[:n]
-				require.Equal(t, want, got)
+			in := make([]byte, 128)
+			n, err := conn.Read(in)
+			require.NoError(t, err, "failed to read from connection")
 
-				// Run against test function and append EOF to end of output bytes
-				out = append(out, []byte{0, 0})
+			status := []byte{0, 6, 's', 't', 'a', 't', 'u', 's'}
+			want, got := status, in[:n]
+			require.Equal(t, want, got)
 
-				for _, o := range out {
-					_, err := conn.Write(o)
-					require.NoError(t, err, "failed to write to connection")
-				}
-			}()
+			// Run against test function and append EOF to end of output bytes
+			out = append(out, []byte{0, 0})
+
+			for _, o := range out {
+				_, err := conn.Write(o)
+				require.NoError(t, err, "failed to write to connection")
+			}
 		}
 	}()
 
@@ -105,6 +102,7 @@ func TestConfig(t *testing.T) {
 			}
 		})
 	}
+
 }
 
 func TestApcupsdGather(t *testing.T) {
@@ -140,9 +138,9 @@ func TestApcupsdGather(t *testing.T) {
 					"time_on_battery_ns":      int64(0),
 					"nominal_input_voltage":   float64(230),
 					"nominal_battery_voltage": float64(12),
-					"nominal_power":           865,
-					"firmware":                "857.L3 .I USB FW:L3",
-					"battery_date":            "2016-09-06",
+					"nominal_power":           int(865),
+					"firmware":                string("857.L3 .I USB FW:L3"),
+					"battery_date":            string("2016-09-06"),
 				},
 				out: genOutput,
 			},
@@ -157,6 +155,7 @@ func TestApcupsdGather(t *testing.T) {
 	)
 
 	for _, tt := range tests {
+
 		t.Run(tt.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 
@@ -208,7 +207,6 @@ func genOutput() [][]byte {
 		"NOMBATTV : 12.0 Volts",
 		"NOMPOWER : 865 Watts",
 		"FIRMWARE : 857.L3 .I USB FW:L3",
-		"ALARMDEL : Low Battery",
 	}
 
 	var out [][]byte

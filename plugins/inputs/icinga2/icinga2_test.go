@@ -7,7 +7,6 @@ import (
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/testutil"
-	"github.com/stretchr/testify/require"
 )
 
 func TestGatherServicesStatus(t *testing.T) {
@@ -31,7 +30,7 @@ func TestGatherServicesStatus(t *testing.T) {
 `
 
 	checks := Result{}
-	require.NoError(t, json.Unmarshal([]byte(s), &checks))
+	json.Unmarshal([]byte(s), &checks)
 
 	icinga2 := new(Icinga2)
 	icinga2.Log = testutil.Logger{}
@@ -85,7 +84,7 @@ func TestGatherHostsStatus(t *testing.T) {
 `
 
 	checks := Result{}
-	require.NoError(t, json.Unmarshal([]byte(s), &checks))
+	json.Unmarshal([]byte(s), &checks)
 
 	var acc testutil.Accumulator
 

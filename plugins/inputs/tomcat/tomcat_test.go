@@ -40,8 +40,7 @@ var tomcatStatus8 = `<?xml version="1.0" encoding="UTF-8"?>
 func TestHTTPTomcat8(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, err := fmt.Fprintln(w, tomcatStatus8)
-		require.NoError(t, err)
+		fmt.Fprintln(w, tomcatStatus8)
 	}))
 	defer ts.Close()
 
@@ -52,7 +51,8 @@ func TestHTTPTomcat8(t *testing.T) {
 	}
 
 	var acc testutil.Accumulator
-	require.NoError(t, tc.Gather(&acc))
+	err := tc.Gather(&acc)
+	require.NoError(t, err)
 
 	// tomcat_jvm_memory
 	jvmMemoryFields := map[string]interface{}{
@@ -112,8 +112,7 @@ var tomcatStatus6 = `<?xml version="1.0" encoding="utf-8"?>
 func TestHTTPTomcat6(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, err := fmt.Fprintln(w, tomcatStatus6)
-		require.NoError(t, err)
+		fmt.Fprintln(w, tomcatStatus6)
 	}))
 	defer ts.Close()
 
@@ -124,7 +123,8 @@ func TestHTTPTomcat6(t *testing.T) {
 	}
 
 	var acc testutil.Accumulator
-	require.NoError(t, tc.Gather(&acc))
+	err := tc.Gather(&acc)
+	require.NoError(t, err)
 
 	// tomcat_jvm_memory
 	jvmMemoryFields := map[string]interface{}{

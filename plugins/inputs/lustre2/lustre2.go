@@ -1,4 +1,3 @@
-//go:build !windows
 // +build !windows
 
 // Package lustre2 (doesn't aim for Windows)
@@ -8,7 +7,7 @@
 package lustre2
 
 import (
-	"os"
+	"io/ioutil"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -55,6 +54,7 @@ type mapping struct {
 	inProc   string // What to look for at the start of a line in /proc/fs/lustre/*
 	field    uint32 // which field to extract from that line
 	reportAs string // What measurement name to use
+	tag      string // Additional tag to add for this metric
 }
 
 var wantedOstFields = []*mapping{
@@ -374,7 +374,7 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, wantedFields []*mapping) e
 		name := path[len(path)-2]
 
 		//lines, err := internal.ReadLines(file)
-		wholeFile, err := os.ReadFile(file)
+		wholeFile, err := ioutil.ReadFile(file)
 		if err != nil {
 			return err
 		}

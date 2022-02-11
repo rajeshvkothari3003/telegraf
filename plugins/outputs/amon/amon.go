@@ -6,18 +6,17 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/outputs"
 )
 
 type Amon struct {
-	ServerKey    string          `toml:"server_key"`
-	AmonInstance string          `toml:"amon_instance"`
-	Timeout      config.Duration `toml:"timeout"`
-	Log          telegraf.Logger `toml:"-"`
+	ServerKey    string            `toml:"server_key"`
+	AmonInstance string            `toml:"amon_instance"`
+	Timeout      internal.Duration `toml:"timeout"`
+	Log          telegraf.Logger   `toml:"-"`
 
 	client *http.Client
 }
@@ -52,7 +51,7 @@ func (a *Amon) Connect() error {
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 		},
-		Timeout: time.Duration(a.Timeout),
+		Timeout: a.Timeout.Duration,
 	}
 	return nil
 }
@@ -134,15 +133,15 @@ func buildMetrics(m telegraf.Metric) (map[string]Point, error) {
 func (p *Point) setValue(v interface{}) error {
 	switch d := v.(type) {
 	case int:
-		p[1] = float64(d)
+		p[1] = float64(int(d))
 	case int32:
-		p[1] = float64(d)
+		p[1] = float64(int32(d))
 	case int64:
-		p[1] = float64(d)
+		p[1] = float64(int64(d))
 	case float32:
 		p[1] = float64(d)
 	case float64:
-		p[1] = d
+		p[1] = float64(d)
 	default:
 		return fmt.Errorf("undeterminable type")
 	}

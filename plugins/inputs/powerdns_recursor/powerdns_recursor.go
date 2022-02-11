@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -20,8 +21,6 @@ type PowerdnsRecursor struct {
 	UnixSockets []string `toml:"unix_sockets"`
 	SocketDir   string   `toml:"socket_dir"`
 	SocketMode  string   `toml:"socket_mode"`
-
-	Log telegraf.Logger `toml:"-"`
 
 	mode uint32
 }
@@ -98,16 +97,14 @@ func (p *PowerdnsRecursor) gatherServer(address string, acc telegraf.Accumulator
 	}
 	defer conn.Close()
 
-	if err := conn.SetDeadline(time.Now().Add(defaultTimeout)); err != nil {
-		return err
-	}
+	conn.SetDeadline(time.Now().Add(defaultTimeout))
 
 	// Read and write buffer
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 	// Send command
 	if _, err := fmt.Fprint(rw, "get-all\n"); err != nil {
-		return err
+		return nil
 	}
 	if err := rw.Flush(); err != nil {
 		return err
@@ -126,17 +123,19 @@ func (p *PowerdnsRecursor) gatherServer(address string, acc telegraf.Accumulator
 	metrics := string(buf)
 
 	// Process data
-	fields := p.parseResponse(metrics)
+	fields := parseResponse(metrics)
 
 	// Add server socket as a tag
 	tags := map[string]string{"server": address}
 
 	acc.AddFields("powerdns_recursor", fields, tags)
 
-	return conn.Close()
+	conn.Close()
+
+	return nil
 }
 
-func (p *PowerdnsRecursor) parseResponse(metrics string) map[string]interface{} {
+func parseResponse(metrics string) map[string]interface{} {
 	values := make(map[string]interface{})
 
 	s := strings.Split(metrics, "\n")
@@ -149,7 +148,8 @@ func (p *PowerdnsRecursor) parseResponse(metrics string) map[string]interface{} 
 
 		i, err := strconv.ParseInt(m[1], 10, 64)
 		if err != nil {
-			p.Log.Errorf("error parsing integer for metric %q: %s", metric, err.Error())
+			log.Printf("E! [inputs.powerdns_recursor] error parsing integer for metric %q: %s",
+				metric, err.Error())
 			continue
 		}
 		values[m[0]] = i

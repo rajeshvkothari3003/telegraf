@@ -67,7 +67,10 @@ func (p *Parser) Parse(b []byte) ([]telegraf.Metric, error) {
 			continue
 		}
 
-		m := metric.New(p.MetricName, map[string]string{}, fields, p.Now())
+		m, err := metric.New(p.MetricName, map[string]string{}, fields, p.Now())
+		if err != nil {
+			return nil, err
+		}
 
 		metrics = append(metrics, m)
 	}

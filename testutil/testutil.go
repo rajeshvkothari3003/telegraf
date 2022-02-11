@@ -56,7 +56,7 @@ func TestMetric(value interface{}, name ...string) telegraf.Metric {
 		measurement = name[0]
 	}
 	tags := map[string]string{"tag1": "value1"}
-	pt := metric.New(
+	pt, _ := metric.New(
 		measurement,
 		tags,
 		map[string]interface{}{"value": value},

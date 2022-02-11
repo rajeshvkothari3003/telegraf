@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"net/url"
@@ -22,7 +23,7 @@ import (
 )
 
 const (
-	defaultURL           = "http://127.0.0.1:3031"
+	defaultUrl           = "http://127.0.0.1:3031"
 	defaultClientTimeout = 5 * time.Second
 	defaultContentType   = "application/json; charset=utf-8"
 )
@@ -81,9 +82,9 @@ type SensuMetrics struct {
 }
 
 type Sensu struct {
-	APIKey        *string           `toml:"api_key"`
-	AgentAPIURL   *string           `toml:"agent_api_url"`
-	BackendAPIURL *string           `toml:"backend_api_url"`
+	ApiKey        *string           `toml:"api_key"`
+	AgentApiUrl   *string           `toml:"agent_api_url"`
+	BackendApiUrl *string           `toml:"backend_api_url"`
 	Entity        *SensuEntity      `toml:"entity"`
 	Tags          map[string]string `toml:"tags"`
 	Metrics       *SensuMetrics     `toml:"metrics"`
@@ -92,7 +93,7 @@ type Sensu struct {
 	Timeout         config.Duration `toml:"timeout"`
 	ContentEncoding string          `toml:"content_encoding"`
 
-	EndpointURL string
+	EndpointUrl string
 	OutEntity   *OutputEntity
 
 	Log telegraf.Logger `toml:"-"`
@@ -218,7 +219,7 @@ func (s *Sensu) createClient() (*http.Client, error) {
 }
 
 func (s *Sensu) Connect() error {
-	err := s.setEndpointURL()
+	err := s.setEndpointUrl()
 	if err != nil {
 		return err
 	}
@@ -291,15 +292,15 @@ func (s *Sensu) Write(metrics []telegraf.Metric) error {
 		}
 	}
 
-	reqBody, err := s.encodeToJSON(points)
+	reqBody, err := s.encodeToJson(points)
 	if err != nil {
 		return err
 	}
 
-	return s.writeMetrics(reqBody)
+	return s.write(reqBody)
 }
 
-func (s *Sensu) writeMetrics(reqBody []byte) error {
+func (s *Sensu) write(reqBody []byte) error {
 	var reqBodyBuffer io.Reader = bytes.NewBuffer(reqBody)
 	method := http.MethodPost
 
@@ -312,7 +313,7 @@ func (s *Sensu) writeMetrics(reqBody []byte) error {
 		reqBodyBuffer = rc
 	}
 
-	req, err := http.NewRequest(method, s.EndpointURL, reqBodyBuffer)
+	req, err := http.NewRequest(method, s.EndpointUrl, reqBodyBuffer)
 	if err != nil {
 		return err
 	}
@@ -324,8 +325,8 @@ func (s *Sensu) writeMetrics(reqBody []byte) error {
 		req.Header.Set("Content-Encoding", "gzip")
 	}
 
-	if s.APIKey != nil {
-		req.Header.Set("Authorization", "Key "+*s.APIKey)
+	if s.ApiKey != nil {
+		req.Header.Set("Authorization", "Key "+*s.ApiKey)
 	}
 
 	resp, err := s.client.Do(req)
@@ -335,13 +336,13 @@ func (s *Sensu) writeMetrics(reqBody []byte) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		bodyData, err := io.ReadAll(resp.Body)
+		bodyData, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			s.Log.Debugf("Couldn't read response body: %v", err)
 		}
 		s.Log.Debugf("Failed to write, response: %v", string(bodyData))
 		if resp.StatusCode < 400 || resp.StatusCode > 499 {
-			return fmt.Errorf("when writing to [%s] received status code: %d", s.EndpointURL, resp.StatusCode)
+			return fmt.Errorf("when writing to [%s] received status code: %d", s.EndpointUrl, resp.StatusCode)
 		}
 	}
 
@@ -349,37 +350,37 @@ func (s *Sensu) writeMetrics(reqBody []byte) error {
 }
 
 // Resolves the event write endpoint
-func (s *Sensu) setEndpointURL() error {
+func (s *Sensu) setEndpointUrl() error {
 	var (
-		endpointURL string
-		pathSuffix  string
+		endpointUrl string
+		path_suffix string
 	)
 
-	if s.BackendAPIURL != nil {
-		endpointURL = *s.BackendAPIURL
+	if s.BackendApiUrl != nil {
+		endpointUrl = *s.BackendApiUrl
 		namespace := "default"
 		if s.Entity != nil && s.Entity.Namespace != nil {
 			namespace = *s.Entity.Namespace
 		}
-		pathSuffix = "/api/core/v2/namespaces/" + namespace + "/events"
-	} else if s.AgentAPIURL != nil {
-		endpointURL = *s.AgentAPIURL
-		pathSuffix = "/events"
+		path_suffix = "/api/core/v2/namespaces/" + namespace + "/events"
+	} else if s.AgentApiUrl != nil {
+		endpointUrl = *s.AgentApiUrl
+		path_suffix = "/events"
 	}
 
-	if len(endpointURL) == 0 {
-		s.Log.Debugf("no backend or agent API URL provided, falling back to default agent API URL %s", defaultURL)
-		endpointURL = defaultURL
-		pathSuffix = "/events"
+	if len(endpointUrl) == 0 {
+		s.Log.Debugf("no backend or agent API URL provided, falling back to default agent API URL %s", defaultUrl)
+		endpointUrl = defaultUrl
+		path_suffix = "/events"
 	}
 
-	u, err := url.Parse(endpointURL)
+	u, err := url.Parse(endpointUrl)
 	if err != nil {
 		return err
 	}
 
-	u.Path = path.Join(u.Path, pathSuffix)
-	s.EndpointURL = u.String()
+	u.Path = path.Join(u.Path, path_suffix)
+	s.EndpointUrl = u.String()
 
 	return nil
 }
@@ -388,12 +389,12 @@ func (s *Sensu) Init() error {
 	if len(s.ContentEncoding) != 0 {
 		validEncoding := []string{"identity", "gzip"}
 		if !choice.Contains(s.ContentEncoding, validEncoding) {
-			return fmt.Errorf("unsupported content_encoding [%q] specified", s.ContentEncoding)
+			return fmt.Errorf("Unsupported content_encoding [%q] specified", s.ContentEncoding)
 		}
 	}
 
-	if s.BackendAPIURL != nil && s.APIKey == nil {
-		return fmt.Errorf("backend_api_url [%q] specified, but no API Key provided", *s.BackendAPIURL)
+	if s.BackendApiUrl != nil && s.ApiKey == nil {
+		return fmt.Errorf("backend_api_url [%q] specified, but no API Key provided", *s.BackendApiUrl)
 	}
 
 	return nil
@@ -403,18 +404,18 @@ func init() {
 	outputs.Add("sensu", func() telegraf.Output {
 		// Default configuration values
 
-		// make a string from the defaultURL const
-		agentAPIURL := defaultURL
+		// make a string from the defaultUrl const
+		agentApiUrl := defaultUrl
 
 		return &Sensu{
-			AgentAPIURL:     &agentAPIURL,
+			AgentApiUrl:     &agentApiUrl,
 			Timeout:         config.Duration(defaultClientTimeout),
 			ContentEncoding: "identity",
 		}
 	})
 }
 
-func (s *Sensu) encodeToJSON(metricPoints []*OutputMetric) ([]byte, error) {
+func (s *Sensu) encodeToJson(metricPoints []*OutputMetric) ([]byte, error) {
 	timestamp := time.Now().Unix()
 
 	check, err := s.getCheck(metricPoints)
@@ -438,7 +439,7 @@ func (s *Sensu) encodeToJSON(metricPoints []*OutputMetric) ([]byte, error) {
 // Constructs the entity payload
 // Throws when no entity name is provided and fails resolve to hostname
 func (s *Sensu) setEntity() error {
-	if s.BackendAPIURL != nil {
+	if s.BackendApiUrl != nil {
 		var entityName string
 		if s.Entity != nil && s.Entity.Name != nil {
 			entityName = *s.Entity.Name

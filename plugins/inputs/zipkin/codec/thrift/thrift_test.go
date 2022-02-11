@@ -1,12 +1,12 @@
 package thrift
 
 import (
-	"os"
+	"io/ioutil"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/influxdata/telegraf/plugins/inputs/zipkin/codec/thrift/gen-go/zipkincore"
+	"github.com/openzipkin/zipkin-go-opentracing/thrift/gen-go/zipkincore"
 )
 
 func Test_endpointHost(t *testing.T) {
@@ -193,7 +193,7 @@ func TestUnmarshalThrift(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dat, err := os.ReadFile(tt.filename)
+			dat, err := ioutil.ReadFile(tt.filename)
 			if err != nil {
 				t.Fatalf("Could not find file %s\n", tt.filename)
 			}

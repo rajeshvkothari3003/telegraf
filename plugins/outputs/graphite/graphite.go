@@ -15,9 +15,8 @@ import (
 )
 
 type Graphite struct {
-	GraphiteTagSupport      bool   `toml:"graphite_tag_support"`
-	GraphiteTagSanitizeMode string `toml:"graphite_tag_sanitize_mode"`
-	GraphiteSeparator       string `toml:"graphite_separator"`
+	GraphiteTagSupport bool   `toml:"graphite_tag_support"`
+	GraphiteSeparator  string `toml:"graphite_separator"`
 	// URL is only for backwards compatibility
 	Servers   []string        `toml:"servers"`
 	Prefix    string          `toml:"prefix"`
@@ -43,11 +42,6 @@ var sampleConfig = `
 
   ## Enable Graphite tags support
   # graphite_tag_support = false
-
-  ## Define how metric names and tags are sanitized; options are "strict", or "compatible"
-  ## strict - Default method, and backwards compatible with previous versionf of Telegraf
-  ## compatible - More relaxed sanitizing when using tags, and compatible with the graphite spec
-  # graphite_tag_sanitize_mode = "strict"
 
   ## Character for separating metric name and field for Graphite tags
   # graphite_separator = "."
@@ -113,7 +107,7 @@ func (g *Graphite) Connect() error {
 func (g *Graphite) Close() error {
 	// Closing all connections
 	for _, conn := range g.conns {
-		_ = conn.Close()
+		conn.Close()
 	}
 	return nil
 }
@@ -133,16 +127,11 @@ func (g *Graphite) Description() string {
 // props to Tv via the authors of carbon-relay-ng` for this trick.
 func (g *Graphite) checkEOF(conn net.Conn) {
 	b := make([]byte, 1024)
-
-	if err := conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond)); err != nil {
-		g.Log.Errorf("Couldn't set read deadline for connection %s. closing conn explicitly", conn)
-		_ = conn.Close()
-		return
-	}
+	conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
 	num, err := conn.Read(b)
 	if err == io.EOF {
 		g.Log.Errorf("Conn %s is closed. closing conn explicitly", conn)
-		_ = conn.Close()
+		conn.Close()
 		return
 	}
 	// just in case i misunderstand something or the remote behaves badly
@@ -152,7 +141,7 @@ func (g *Graphite) checkEOF(conn net.Conn) {
 	// Log non-timeout errors or close.
 	if e, ok := err.(net.Error); !(ok && e.Timeout()) {
 		g.Log.Errorf("conn %s checkEOF .conn.Read returned err != EOF, which is unexpected.  closing conn. error: %s", conn, err)
-		_ = conn.Close()
+		conn.Close()
 	}
 }
 
@@ -161,7 +150,7 @@ func (g *Graphite) checkEOF(conn net.Conn) {
 func (g *Graphite) Write(metrics []telegraf.Metric) error {
 	// Prepare data
 	var batch []byte
-	s, err := serializers.NewGraphiteSerializer(g.Prefix, g.Template, g.GraphiteTagSupport, g.GraphiteTagSanitizeMode, g.GraphiteSeparator, g.Templates)
+	s, err := serializers.NewGraphiteSerializer(g.Prefix, g.Template, g.GraphiteTagSupport, g.GraphiteSeparator, g.Templates)
 	if err != nil {
 		return err
 	}
@@ -179,7 +168,7 @@ func (g *Graphite) Write(metrics []telegraf.Metric) error {
 	// try to reconnect and retry to send
 	if err != nil {
 		g.Log.Error("Graphite: Reconnecting and retrying...")
-		_ = g.Connect()
+		g.Connect()
 		err = g.send(batch)
 	}
 
@@ -194,14 +183,15 @@ func (g *Graphite) send(batch []byte) error {
 	p := rand.Perm(len(g.conns))
 	for _, n := range p {
 		if g.Timeout > 0 {
-			_ = g.conns[n].SetWriteDeadline(time.Now().Add(time.Duration(g.Timeout) * time.Second))
+			g.conns[n].SetWriteDeadline(time.Now().Add(time.Duration(g.Timeout) * time.Second))
 		}
 		g.checkEOF(g.conns[n])
 		if _, e := g.conns[n].Write(batch); e != nil {
 			// Error
 			g.Log.Errorf("Graphite Error: " + e.Error())
-			// Close explicitly and let's try the next one
-			_ = g.conns[n].Close()
+			// Close explicitly
+			g.conns[n].Close()
+			// Let's try the next one
 		} else {
 			// Success
 			err = nil

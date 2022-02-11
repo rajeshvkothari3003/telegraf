@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/influxdata/telegraf/testutil"
-	"github.com/stretchr/testify/require"
 )
 
 const welcome = `Welcome to the TeamSpeak 3 ServerQuery interface, type "help" for a list of commands and "help <command>" for information on a specific command.`
@@ -23,7 +22,9 @@ var cmd = map[string]string{
 
 func TestGather(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err, "Initializing test server failed")
+	if err != nil {
+		t.Fatal("Initializing test server failed")
+	}
 	defer l.Close()
 
 	go handleRequest(l, t)
@@ -35,7 +36,11 @@ func TestGather(t *testing.T) {
 		Password:       "test",
 		VirtualServers: []int{1},
 	}
-	require.NoError(t, testConfig.Gather(&acc), "Gather returned error. Error: %s\n", err)
+	err = testConfig.Gather(&acc)
+
+	if err != nil {
+		t.Fatalf("Gather returned error. Error: %s\n", err)
+	}
 
 	fields := map[string]interface{}{
 		"uptime":                 int(148),
@@ -54,9 +59,10 @@ func TestGather(t *testing.T) {
 
 func handleRequest(l net.Listener, t *testing.T) {
 	c, err := l.Accept()
-	require.NoError(t, err, "Error accepting test connection")
-	_, err = c.Write([]byte("TS3\n\r" + welcome + "\n\r"))
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal("Error accepting test connection")
+	}
+	c.Write([]byte("TS3\n\r" + welcome + "\n\r"))
 	for {
 		msg, _, err := bufio.NewReader(c).ReadLine()
 		if err != nil {
@@ -67,21 +73,16 @@ func handleRequest(l net.Listener, t *testing.T) {
 		if exists {
 			switch r {
 			case "":
-				_, err = c.Write([]byte(ok + "\n\r"))
-				require.NoError(t, err)
+				c.Write([]byte(ok + "\n\r"))
 			case "quit":
-				_, err = c.Write([]byte(ok + "\n\r"))
-				require.NoError(t, err)
-				err = c.Close()
-				require.NoError(t, err)
+				c.Write([]byte(ok + "\n\r"))
+				c.Close()
 				return
 			default:
-				_, err = c.Write([]byte(r + "\n\r" + ok + "\n\r"))
-				require.NoError(t, err)
+				c.Write([]byte(r + "\n\r" + ok + "\n\r"))
 			}
 		} else {
-			_, err = c.Write([]byte(errorMsg + "\n\r"))
-			require.NoError(t, err)
+			c.Write([]byte(errorMsg + "\n\r"))
 		}
 	}
 }

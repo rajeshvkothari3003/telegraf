@@ -10,10 +10,15 @@ import (
 	"time"
 
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/filter"
 	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/inputs"
 )
+
+// Mapping of ntpctl header names to tag keys
+var tagHeaders = map[string]string{
+	"st": "stratum",
+}
 
 // Mapping of the ntpctl tag key to the index in the command output
 var tagI = map[string]int{
@@ -35,19 +40,20 @@ var intI = map[string]int{
 	"poll": 4,
 }
 
-type runner func(cmdName string, timeout config.Duration, useSudo bool) (*bytes.Buffer, error)
+type runner func(cmdName string, Timeout internal.Duration, UseSudo bool) (*bytes.Buffer, error)
 
 // Openntpd is used to store configuration values
 type Openntpd struct {
 	Binary  string
-	Timeout config.Duration
+	Timeout internal.Duration
 	UseSudo bool
 
-	run runner
+	filter filter.Filter
+	run    runner
 }
 
 var defaultBinary = "/usr/sbin/ntpctl"
-var defaultTimeout = config.Duration(5 * time.Second)
+var defaultTimeout = internal.Duration{Duration: 5 * time.Second}
 
 func (n *Openntpd) Description() string {
 	return "Get standard NTP query metrics from OpenNTPD."
@@ -67,19 +73,19 @@ func (n *Openntpd) SampleConfig() string {
 }
 
 // Shell out to ntpctl and return the output
-func openntpdRunner(cmdName string, timeout config.Duration, useSudo bool) (*bytes.Buffer, error) {
+func openntpdRunner(cmdName string, Timeout internal.Duration, UseSudo bool) (*bytes.Buffer, error) {
 	cmdArgs := []string{"-s", "peers"}
 
 	cmd := exec.Command(cmdName, cmdArgs...)
 
-	if useSudo {
+	if UseSudo {
 		cmdArgs = append([]string{cmdName}, cmdArgs...)
 		cmd = exec.Command("sudo", cmdArgs...)
 	}
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	err := internal.RunTimeout(cmd, time.Duration(timeout))
+	err := internal.RunTimeout(cmd, Timeout.Duration)
 	if err != nil {
 		return &out, fmt.Errorf("error running ntpctl: %s", err)
 	}
@@ -127,8 +133,8 @@ func (n *Openntpd) Gather(acc telegraf.Accumulator) error {
 		fields = strings.Fields(line)
 
 		// if there is an ntpctl state prefix, remove it and make it it's own tag
-		if strings.ContainsAny(fields[0], "*") {
-			tags["state_prefix"] = fields[0]
+		if strings.ContainsAny(string(fields[0]), "*") {
+			tags["state_prefix"] = string(fields[0])
 			fields = fields[1:]
 		}
 
@@ -150,13 +156,16 @@ func (n *Openntpd) Gather(acc telegraf.Accumulator) error {
 			}
 
 			if key == "next" || key == "poll" {
+
 				m, err := strconv.ParseInt(strings.TrimSuffix(fields[index], "s"), 10, 64)
 				if err != nil {
 					acc.AddError(fmt.Errorf("integer value expected, got: %s", fields[index]))
 					continue
 				}
 				mFields[key] = m
+
 			} else {
+
 				m, err := strconv.ParseInt(fields[index], 10, 64)
 				if err != nil {
 					acc.AddError(fmt.Errorf("integer value expected, got: %s", fields[index]))
@@ -176,19 +185,23 @@ func (n *Openntpd) Gather(acc telegraf.Accumulator) error {
 			}
 
 			if key == "offset" || key == "delay" || key == "jitter" {
+
 				m, err := strconv.ParseFloat(strings.TrimSuffix(fields[index], "ms"), 64)
 				if err != nil {
 					acc.AddError(fmt.Errorf("float value expected, got: %s", fields[index]))
 					continue
 				}
 				mFields[key] = m
+
 			} else {
+
 				m, err := strconv.ParseFloat(fields[index], 64)
 				if err != nil {
 					acc.AddError(fmt.Errorf("float value expected, got: %s", fields[index]))
 					continue
 				}
 				mFields[key] = m
+
 			}
 		}
 		acc.AddFields("openntpd", mFields, tags)

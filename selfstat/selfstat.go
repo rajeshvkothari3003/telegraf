@@ -7,6 +7,7 @@ package selfstat
 
 import (
 	"hash/fnv"
+	"log"
 	"sort"
 	"sync"
 	"time"
@@ -95,8 +96,12 @@ func Metrics() []telegraf.Metric {
 				fields[fieldname] = stat.Get()
 				j++
 			}
-			m := metric.New(name, tags, fields, now)
-			metrics[i] = m
+			metric, err := metric.New(name, tags, fields, now)
+			if err != nil {
+				log.Printf("E! Error creating selfstat metric: %s", err)
+				continue
+			}
+			metrics[i] = metric
 			i++
 		}
 	}
@@ -173,6 +178,7 @@ func (r *Registry) set(key uint64, s Stat) {
 	}
 
 	r.stats[key][s.FieldName()] = s
+	return
 }
 
 func key(measurement string, tags map[string]string) uint64 {

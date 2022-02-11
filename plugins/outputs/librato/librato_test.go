@@ -64,6 +64,7 @@ func TestBadStatusCode(t *testing.T) {
 }
 
 func TestBuildGauge(t *testing.T) {
+
 	mtime := time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC).Unix()
 	var gaugeTests = []struct {
 		ptIn     telegraf.Metric
@@ -161,7 +162,7 @@ func TestBuildGauge(t *testing.T) {
 }
 
 func newHostMetric(value interface{}, name, host string) telegraf.Metric {
-	m := metric.New(
+	m, _ := metric.New(
 		name,
 		map[string]string{"host": host},
 		map[string]interface{}{"value": value},
@@ -172,19 +173,19 @@ func newHostMetric(value interface{}, name, host string) telegraf.Metric {
 
 func TestBuildGaugeWithSource(t *testing.T) {
 	mtime := time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
-	pt1 := metric.New(
+	pt1, _ := metric.New(
 		"test1",
 		map[string]string{"hostname": "192.168.0.1", "tag1": "value1"},
 		map[string]interface{}{"value": 0.0},
 		mtime,
 	)
-	pt2 := metric.New(
+	pt2, _ := metric.New(
 		"test2",
 		map[string]string{"hostnam": "192.168.0.1", "tag1": "value1"},
 		map[string]interface{}{"value": 1.0},
 		mtime,
 	)
-	pt3 := metric.New(
+	pt3, _ := metric.New(
 		"test3",
 		map[string]string{
 			"hostname": "192.168.0.1",
@@ -193,7 +194,7 @@ func TestBuildGaugeWithSource(t *testing.T) {
 		map[string]interface{}{"value": 1.0},
 		mtime,
 	)
-	pt4 := metric.New(
+	pt4, _ := metric.New(
 		"test4",
 		map[string]string{
 			"hostname": "192.168.0.1",

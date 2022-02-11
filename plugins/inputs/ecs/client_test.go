@@ -3,14 +3,14 @@ package ecs
 import (
 	"bytes"
 	"errors"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"testing"
 
 	"github.com/docker/docker/api/types"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
 type pollMock struct {
@@ -27,6 +27,7 @@ func (p *pollMock) ContainerStats() (map[string]types.StatsJSON, error) {
 }
 
 func TestEcsClient_PollSync(t *testing.T) {
+
 	tests := []struct {
 		name    string
 		mock    *pollMock
@@ -80,8 +81,8 @@ func TestEcsClient_PollSync(t *testing.T) {
 				t.Errorf("EcsClient.PollSync() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			require.Equal(t, tt.want, got, "EcsClient.PollSync() got = %v, want %v", got, tt.want)
-			require.Equal(t, tt.want1, got1, "EcsClient.PollSync() got1 = %v, want %v", got1, tt.want1)
+			assert.Equal(t, tt.want, got, "EcsClient.PollSync() got = %v, want %v", got, tt.want)
+			assert.Equal(t, tt.want1, got1, "EcsClient.PollSync() got1 = %v, want %v", got1, tt.want1)
 		})
 	}
 }
@@ -108,7 +109,7 @@ func TestEcsClient_Task(t *testing.T) {
 				do: func(req *http.Request) (*http.Response, error) {
 					return &http.Response{
 						StatusCode: http.StatusOK,
-						Body:       io.NopCloser(rc),
+						Body:       ioutil.NopCloser(rc),
 					}, nil
 				},
 			},
@@ -129,7 +130,7 @@ func TestEcsClient_Task(t *testing.T) {
 				do: func(req *http.Request) (*http.Response, error) {
 					return &http.Response{
 						StatusCode: http.StatusInternalServerError,
-						Body:       io.NopCloser(bytes.NewReader([]byte("foo"))),
+						Body:       ioutil.NopCloser(bytes.NewReader([]byte("foo"))),
 					}, nil
 				},
 			},
@@ -141,7 +142,7 @@ func TestEcsClient_Task(t *testing.T) {
 				do: func(req *http.Request) (*http.Response, error) {
 					return &http.Response{
 						StatusCode: http.StatusOK,
-						Body:       io.NopCloser(bytes.NewReader([]byte("foo"))),
+						Body:       ioutil.NopCloser(bytes.NewReader([]byte("foo"))),
 					}, nil
 				},
 			},
@@ -160,7 +161,7 @@ func TestEcsClient_Task(t *testing.T) {
 				t.Errorf("EcsClient.Task() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			require.Equal(t, tt.want, got, "EcsClient.Task() = %v, want %v", got, tt.want)
+			assert.Equal(t, tt.want, got, "EcsClient.Task() = %v, want %v", got, tt.want)
 		})
 	}
 }
@@ -179,7 +180,7 @@ func TestEcsClient_ContainerStats(t *testing.T) {
 				do: func(req *http.Request) (*http.Response, error) {
 					return &http.Response{
 						StatusCode: http.StatusOK,
-						Body:       io.NopCloser(rc),
+						Body:       ioutil.NopCloser(rc),
 					}, nil
 				},
 			},
@@ -201,7 +202,7 @@ func TestEcsClient_ContainerStats(t *testing.T) {
 				do: func(req *http.Request) (*http.Response, error) {
 					return &http.Response{
 						StatusCode: http.StatusOK,
-						Body:       io.NopCloser(bytes.NewReader([]byte("foo"))),
+						Body:       ioutil.NopCloser(bytes.NewReader([]byte("foo"))),
 					}, nil
 				},
 			},
@@ -214,7 +215,7 @@ func TestEcsClient_ContainerStats(t *testing.T) {
 				do: func(req *http.Request) (*http.Response, error) {
 					return &http.Response{
 						StatusCode: http.StatusInternalServerError,
-						Body:       io.NopCloser(bytes.NewReader([]byte("foo"))),
+						Body:       ioutil.NopCloser(bytes.NewReader([]byte("foo"))),
 					}, nil
 				},
 			},
@@ -234,7 +235,7 @@ func TestEcsClient_ContainerStats(t *testing.T) {
 				t.Errorf("EcsClient.ContainerStats() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			require.Equal(t, tt.want, got, "EcsClient.ContainerStats() = %v, want %v", got, tt.want)
+			assert.Equal(t, tt.want, got, "EcsClient.ContainerStats() = %v, want %v", got, tt.want)
 		})
 	}
 }
@@ -268,10 +269,10 @@ func TestResolveTaskURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			baseURL, err := url.Parse(tt.base)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			act := resolveTaskURL(baseURL, tt.ver)
-			require.Equal(t, tt.exp, act)
+			assert.Equal(t, tt.exp, act)
 		})
 	}
 }
@@ -305,10 +306,10 @@ func TestResolveStatsURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			baseURL, err := url.Parse(tt.base)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			act := resolveStatsURL(baseURL, tt.ver)
-			require.Equal(t, tt.exp, act)
+			assert.Equal(t, tt.exp, act)
 		})
 	}
 }

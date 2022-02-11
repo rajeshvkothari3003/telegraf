@@ -8,28 +8,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestClusterIncludeExcludeFilter(t *testing.T) {
 	ch := ClickHouse{}
-	require.Equal(t, "", ch.clusterIncludeExcludeFilter())
-	ch.ClusterExclude = []string{"test_cluster"}
-	require.Equal(t, "WHERE cluster NOT IN ('test_cluster')", ch.clusterIncludeExcludeFilter())
+	if assert.Equal(t, "", ch.clusterIncludeExcludeFilter()) {
+		ch.ClusterExclude = []string{"test_cluster"}
+		assert.Equal(t, "WHERE cluster NOT IN ('test_cluster')", ch.clusterIncludeExcludeFilter())
 
-	ch.ClusterExclude = []string{"test_cluster"}
-	ch.ClusterInclude = []string{"cluster"}
-	require.Equal(t, "WHERE cluster IN ('cluster') OR cluster NOT IN ('test_cluster')", ch.clusterIncludeExcludeFilter())
+		ch.ClusterExclude = []string{"test_cluster"}
+		ch.ClusterInclude = []string{"cluster"}
+		assert.Equal(t, "WHERE cluster IN ('cluster') OR cluster NOT IN ('test_cluster')", ch.clusterIncludeExcludeFilter())
 
-	ch.ClusterExclude = []string{}
-	ch.ClusterInclude = []string{"cluster1", "cluster2"}
-	require.Equal(t, "WHERE cluster IN ('cluster1', 'cluster2')", ch.clusterIncludeExcludeFilter())
+		ch.ClusterExclude = []string{}
+		ch.ClusterInclude = []string{"cluster1", "cluster2"}
+		assert.Equal(t, "WHERE cluster IN ('cluster1', 'cluster2')", ch.clusterIncludeExcludeFilter())
 
-	ch.ClusterExclude = []string{"cluster1", "cluster2"}
-	ch.ClusterInclude = []string{}
-	require.Equal(t, "WHERE cluster NOT IN ('cluster1', 'cluster2')", ch.clusterIncludeExcludeFilter())
+		ch.ClusterExclude = []string{"cluster1", "cluster2"}
+		ch.ClusterInclude = []string{}
+		assert.Equal(t, "WHERE cluster NOT IN ('cluster1', 'cluster2')", ch.clusterIncludeExcludeFilter())
+	}
 }
 
 func TestChInt64(t *testing.T) {
@@ -42,9 +42,9 @@ func TestChInt64(t *testing.T) {
 	}
 	for src, expected := range assets {
 		var v chUInt64
-		err := v.UnmarshalJSON([]byte(src))
-		require.NoError(t, err)
-		require.Equal(t, expected, uint64(v))
+		if err := v.UnmarshalJSON([]byte(src)); assert.NoError(t, err) {
+			assert.Equal(t, expected, uint64(v))
+		}
 	}
 }
 
@@ -57,7 +57,7 @@ func TestGather(t *testing.T) {
 			enc := json.NewEncoder(w)
 			switch query := r.URL.Query().Get("query"); {
 			case strings.Contains(query, "system.parts"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						Database string   `json:"database"`
 						Table    string   `json:"table"`
@@ -74,9 +74,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "system.events"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						Metric string   `json:"metric"`
 						Value  chUInt64 `json:"value"`
@@ -91,9 +90,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "system.metrics"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						Metric string   `json:"metric"`
 						Value  chUInt64 `json:"value"`
@@ -108,9 +106,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "system.asynchronous_metrics"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						Metric string   `json:"metric"`
 						Value  chUInt64 `json:"value"`
@@ -125,9 +122,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "zk_exists"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						ZkExists chUInt64 `json:"zk_exists"`
 					}{
@@ -136,9 +132,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "zk_root_nodes"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						ZkRootNodes chUInt64 `json:"zk_root_nodes"`
 					}{
@@ -147,9 +142,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "replication_queue_exists"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						ReplicationQueueExists chUInt64 `json:"replication_queue_exists"`
 					}{
@@ -158,9 +152,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "replication_too_many_tries_replicas"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						TooManyTriesReplicas chUInt64 `json:"replication_too_many_tries_replicas"`
 						NumTriesReplicas     chUInt64 `json:"replication_num_tries_replicas"`
@@ -171,9 +164,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "system.detached_parts"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						DetachedParts chUInt64 `json:"detached_parts"`
 					}{
@@ -182,9 +174,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "system.dictionaries"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						Origin         string   `json:"origin"`
 						Status         string   `json:"status"`
@@ -197,9 +188,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "system.mutations"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						Failed    chUInt64 `json:"failed"`
 						Completed chUInt64 `json:"completed"`
@@ -212,9 +202,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "system.disks"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						Name            string   `json:"name"`
 						Path            string   `json:"path"`
@@ -229,9 +218,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "system.processes"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						QueryType      string  `json:"query_type"`
 						Percentile50   float64 `json:"p50"`
@@ -258,9 +246,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "text_log_exists"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						TextLogExists chUInt64 `json:"text_log_exists"`
 					}{
@@ -269,9 +256,8 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "system.text_log"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						Level                 string   `json:"level"`
 						LastMessagesLast10Min chUInt64 `json:"messages_last_10_min"`
@@ -298,7 +284,6 @@ func TestGather(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			}
 		}))
 		ch = &ClickHouse{
@@ -309,7 +294,7 @@ func TestGather(t *testing.T) {
 		acc = &testutil.Accumulator{}
 	)
 	defer ts.Close()
-	require.NoError(t, ch.Gather(acc))
+	ch.Gather(acc)
 
 	acc.AssertContainsTaggedFields(t, "clickhouse_tables",
 		map[string]interface{}{
@@ -337,8 +322,8 @@ func TestGather(t *testing.T) {
 	)
 	acc.AssertContainsFields(t, "clickhouse_asynchronous_metrics",
 		map[string]interface{}{
-			"test_system_asynchronous_metric":  float64(1000),
-			"test_system_asynchronous_metric2": float64(2000),
+			"test_system_asynchronous_metric":  uint64(1000),
+			"test_system_asynchronous_metric2": uint64(2000),
 		},
 	)
 	acc.AssertContainsFields(t, "clickhouse_zookeeper",
@@ -442,7 +427,7 @@ func TestGatherWithSomeTablesNotExists(t *testing.T) {
 			enc := json.NewEncoder(w)
 			switch query := r.URL.Query().Get("query"); {
 			case strings.Contains(query, "zk_exists"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						ZkExists chUInt64 `json:"zk_exists"`
 					}{
@@ -451,9 +436,8 @@ func TestGatherWithSomeTablesNotExists(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "replication_queue_exists"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						ReplicationQueueExists chUInt64 `json:"replication_queue_exists"`
 					}{
@@ -462,9 +446,8 @@ func TestGatherWithSomeTablesNotExists(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			case strings.Contains(query, "text_log_exists"):
-				err := enc.Encode(result{
+				enc.Encode(result{
 					Data: []struct {
 						TextLogExists chUInt64 `json:"text_log_exists"`
 					}{
@@ -473,7 +456,6 @@ func TestGatherWithSomeTablesNotExists(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			}
 		}))
 		ch = &ClickHouse{
@@ -485,7 +467,7 @@ func TestGatherWithSomeTablesNotExists(t *testing.T) {
 		acc = &testutil.Accumulator{}
 	)
 	defer ts.Close()
-	require.NoError(t, ch.Gather(acc))
+	ch.Gather(acc)
 
 	acc.AssertDoesNotContainMeasurement(t, "clickhouse_zookeeper")
 	acc.AssertDoesNotContainMeasurement(t, "clickhouse_replication_queue")
@@ -500,10 +482,9 @@ func TestWrongJSONMarshalling(t *testing.T) {
 			}
 			enc := json.NewEncoder(w)
 			//wrong data section json
-			err := enc.Encode(result{
+			enc.Encode(result{
 				Data: []struct{}{},
 			})
-			require.NoError(t, err)
 		}))
 		ch = &ClickHouse{
 			Servers: []string{
@@ -514,9 +495,9 @@ func TestWrongJSONMarshalling(t *testing.T) {
 		acc = &testutil.Accumulator{}
 	)
 	defer ts.Close()
-	require.NoError(t, ch.Gather(acc))
+	ch.Gather(acc)
 
-	require.Equal(t, 0, len(acc.Metrics))
+	assert.Equal(t, 0, len(acc.Metrics))
 	allMeasurements := []string{
 		"clickhouse_events",
 		"clickhouse_metrics",
@@ -531,7 +512,7 @@ func TestWrongJSONMarshalling(t *testing.T) {
 		"clickhouse_processes",
 		"clickhouse_text_log",
 	}
-	require.GreaterOrEqual(t, len(allMeasurements), len(acc.Errors))
+	assert.GreaterOrEqual(t, len(allMeasurements), len(acc.Errors))
 }
 
 func TestOfflineServer(t *testing.T) {
@@ -547,9 +528,9 @@ func TestOfflineServer(t *testing.T) {
 			},
 		}
 	)
-	require.NoError(t, ch.Gather(acc))
+	ch.Gather(acc)
 
-	require.Equal(t, 0, len(acc.Metrics))
+	assert.Equal(t, 0, len(acc.Metrics))
 	allMeasurements := []string{
 		"clickhouse_events",
 		"clickhouse_metrics",
@@ -564,7 +545,7 @@ func TestOfflineServer(t *testing.T) {
 		"clickhouse_processes",
 		"clickhouse_text_log",
 	}
-	require.GreaterOrEqual(t, len(allMeasurements), len(acc.Errors))
+	assert.GreaterOrEqual(t, len(allMeasurements), len(acc.Errors))
 }
 
 func TestAutoDiscovery(t *testing.T) {
@@ -574,9 +555,9 @@ func TestAutoDiscovery(t *testing.T) {
 				Data interface{} `json:"data"`
 			}
 			enc := json.NewEncoder(w)
-			query := r.URL.Query().Get("query")
-			if strings.Contains(query, "system.clusters") {
-				err := enc.Encode(result{
+			switch query := r.URL.Query().Get("query"); {
+			case strings.Contains(query, "system.clusters"):
+				enc.Encode(result{
 					Data: []struct {
 						Cluster  string   `json:"test"`
 						Hostname string   `json:"localhost"`
@@ -589,7 +570,6 @@ func TestAutoDiscovery(t *testing.T) {
 						},
 					},
 				})
-				require.NoError(t, err)
 			}
 		}))
 		ch = &ClickHouse{
@@ -602,5 +582,6 @@ func TestAutoDiscovery(t *testing.T) {
 		acc = &testutil.Accumulator{}
 	)
 	defer ts.Close()
-	require.NoError(t, ch.Gather(acc))
+	ch.Gather(acc)
+
 }

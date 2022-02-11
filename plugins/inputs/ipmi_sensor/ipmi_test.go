@@ -7,11 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGather(t *testing.T) {
@@ -19,9 +18,8 @@ func TestGather(t *testing.T) {
 		Servers:   []string{"USERID:PASSW0RD@lan(192.168.1.1)"},
 		Path:      "ipmitool",
 		Privilege: "USER",
-		Timeout:   config.Duration(time.Second * 5),
+		Timeout:   internal.Duration{Duration: time.Second * 5},
 		HexKey:    "1234567F",
-		Log:       testutil.Logger{},
 	}
 
 	// overwriting exec commands with mock commands
@@ -46,7 +44,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(20),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name":   "ambient_temp",
@@ -57,7 +55,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(80),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name":   "altitude",
@@ -68,7 +66,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(210),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name":   "avg_power",
@@ -79,7 +77,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(4.9),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name":   "planar_5v",
@@ -90,7 +88,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(3.05),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name":   "planar_vbat",
@@ -101,7 +99,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(2610),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name":   "fan_1a_tach",
@@ -112,7 +110,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(1775),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name":   "fan_1b_tach",
@@ -128,8 +126,7 @@ func TestGather(t *testing.T) {
 
 	i = &Ipmi{
 		Path:    "ipmitool",
-		Timeout: config.Duration(time.Second * 5),
-		Log:     testutil.Logger{},
+		Timeout: internal.Duration{Duration: time.Second * 5},
 	}
 
 	err = acc.GatherError(i.Gather)
@@ -142,7 +139,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(20),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name": "ambient_temp",
@@ -152,7 +149,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(80),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name": "altitude",
@@ -162,7 +159,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(210),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name": "avg_power",
@@ -172,7 +169,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(4.9),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name": "planar_5v",
@@ -182,7 +179,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(3.05),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name": "planar_vbat",
@@ -192,7 +189,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(2610),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name": "fan_1a_tach",
@@ -202,7 +199,7 @@ func TestGather(t *testing.T) {
 		{
 			map[string]interface{}{
 				"value":  float64(1775),
-				"status": 1,
+				"status": int(1),
 			},
 			map[string]string{
 				"name": "fan_1b_tach",
@@ -230,7 +227,7 @@ func fakeExecCommand(command string, args ...string) *exec.Cmd {
 // For example, if you run:
 // GO_WANT_HELPER_PROCESS=1 go test -test.run=TestHelperProcess -- chrony tracking
 // it returns below mockData.
-func TestHelperProcess(_ *testing.T) {
+func TestHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
 		return
 	}
@@ -374,19 +371,15 @@ OS RealTime Mod  | 0x00              | ok
 
 	// Previous arguments are tests stuff, that looks like :
 	// /tmp/go-build970079519/…/_test/integration.test -test.run=TestHelperProcess --
-	cmd := args[3]
+	cmd, args := args[3], args[4:]
 
-	// Ignore the returned errors for the mocked interface as tests will fail anyway
 	if cmd == "ipmitool" {
-		//nolint:errcheck,revive
 		fmt.Fprint(os.Stdout, mockData)
 	} else {
-		//nolint:errcheck,revive
 		fmt.Fprint(os.Stdout, "command not found")
-		//nolint:revive // error code is important for this "test"
 		os.Exit(1)
+
 	}
-	//nolint:revive // error code is important for this "test"
 	os.Exit(0)
 }
 
@@ -395,10 +388,9 @@ func TestGatherV2(t *testing.T) {
 		Servers:       []string{"USERID:PASSW0RD@lan(192.168.1.1)"},
 		Path:          "ipmitool",
 		Privilege:     "USER",
-		Timeout:       config.Duration(time.Second * 5),
+		Timeout:       internal.Duration{Duration: time.Second * 5},
 		MetricVersion: 2,
 		HexKey:        "0000000F",
-		Log:           testutil.Logger{},
 	}
 	// overwriting exec commands with mock commands
 	execCommand = fakeExecCommandV2
@@ -438,9 +430,8 @@ func TestGatherV2(t *testing.T) {
 
 	i = &Ipmi{
 		Path:          "ipmitool",
-		Timeout:       config.Duration(time.Second * 5),
+		Timeout:       internal.Duration{Duration: time.Second * 5},
 		MetricVersion: 2,
-		Log:           testutil.Logger{},
 	}
 
 	err = acc.GatherError(i.Gather)
@@ -556,7 +547,7 @@ func fakeExecCommandV2(command string, args ...string) *exec.Cmd {
 // For example, if you run:
 // GO_WANT_HELPER_PROCESS=1 go test -test.run=TestHelperProcessV2 -- chrony tracking
 // it returns below mockData.
-func TestHelperProcessV2(_ *testing.T) {
+func TestHelperProcessV2(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
 		return
 	}
@@ -575,19 +566,15 @@ Power Supply 1   | 03h | ok  | 10.1 | 110 Watts, Presence detected
 
 	// Previous arguments are tests stuff, that looks like :
 	// /tmp/go-build970079519/…/_test/integration.test -test.run=TestHelperProcess --
-	cmd := args[3]
+	cmd, args := args[3], args[4:]
 
-	// Ignore the returned errors for the mocked interface as tests will fail anyway
 	if cmd == "ipmitool" {
-		//nolint:errcheck,revive
 		fmt.Fprint(os.Stdout, mockData)
 	} else {
-		//nolint:errcheck,revive
 		fmt.Fprint(os.Stdout, "command not found")
-		//nolint:revive // error code is important for this "test"
 		os.Exit(1)
+
 	}
-	//nolint:revive // error code is important for this "test"
 	os.Exit(0)
 }
 
@@ -622,14 +609,10 @@ Power Supply 1   | 03h | ok  | 10.1 | 110 Watts, Presence detected
 		v2Data,
 	}
 
-	ipmi := &Ipmi{
-		Log: testutil.Logger{},
-	}
-
 	for i := range tests {
 		t.Logf("Checking v%d data...", i+1)
-		ipmi.extractFieldsFromRegex(reV1ParseLine, tests[i])
-		ipmi.extractFieldsFromRegex(reV2ParseLine, tests[i])
+		extractFieldsFromRegex(reV1ParseLine, tests[i])
+		extractFieldsFromRegex(reV2ParseLine, tests[i])
 	}
 }
 
@@ -666,16 +649,11 @@ func Test_parseV1(t *testing.T) {
 			wantErr:    false,
 		},
 	}
-
-	ipmi := &Ipmi{
-		Log: testutil.Logger{},
-	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var acc testutil.Accumulator
 
-			if err := ipmi.parseV1(&acc, tt.args.hostname, tt.args.cmdOut, tt.args.measuredAt); (err != nil) != tt.wantErr {
+			if err := parseV1(&acc, tt.args.hostname, tt.args.cmdOut, tt.args.measuredAt); (err != nil) != tt.wantErr {
 				t.Errorf("parseV1() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
@@ -764,66 +742,13 @@ func Test_parseV2(t *testing.T) {
 			wantErr: false,
 		},
 	}
-
-	ipmi := &Ipmi{
-		Log: testutil.Logger{},
-	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var acc testutil.Accumulator
-			if err := ipmi.parseV2(&acc, tt.args.hostname, tt.args.cmdOut, tt.args.measuredAt); (err != nil) != tt.wantErr {
+			if err := parseV2(&acc, tt.args.hostname, tt.args.cmdOut, tt.args.measuredAt); (err != nil) != tt.wantErr {
 				t.Errorf("parseV2() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			testutil.RequireMetricsEqual(t, tt.expected, acc.GetTelegrafMetrics(), testutil.IgnoreTime())
-		})
-	}
-}
-
-func TestSanitizeIPMICmd(t *testing.T) {
-	tests := []struct {
-		name     string
-		args     []string
-		expected []string
-	}{
-		{
-			name: "default args",
-			args: []string{
-				"-H", "localhost",
-				"-U", "username",
-				"-P", "password",
-				"-I", "lan",
-			},
-			expected: []string{
-				"-H", "localhost",
-				"-U", "username",
-				"-P", "REDACTED",
-				"-I", "lan",
-			},
-		},
-		{
-			name: "no password",
-			args: []string{
-				"-H", "localhost",
-				"-U", "username",
-				"-I", "lan",
-			},
-			expected: []string{
-				"-H", "localhost",
-				"-U", "username",
-				"-I", "lan",
-			},
-		},
-		{
-			name:     "empty args",
-			args:     []string{},
-			expected: []string{},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var sanitizedArgs []string = sanitizeIPMICmd(tt.args)
-			require.Equal(t, tt.expected, sanitizedArgs)
 		})
 	}
 }

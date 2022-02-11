@@ -13,12 +13,10 @@ type DiskStats struct {
 	ps system.PS
 
 	// Legacy support
-	LegacyMountPoints []string `toml:"mountpoints"`
+	Mountpoints []string `toml:"mountpoints"`
 
 	MountPoints []string `toml:"mount_points"`
 	IgnoreFS    []string `toml:"ignore_fs"`
-
-	Log telegraf.Logger `toml:"-"`
 }
 
 func (ds *DiskStats) Description() string {
@@ -38,30 +36,23 @@ func (ds *DiskStats) SampleConfig() string {
 	return diskSampleConfig
 }
 
-func (ds *DiskStats) Init() error {
+func (ds *DiskStats) Gather(acc telegraf.Accumulator) error {
 	// Legacy support:
-	if len(ds.LegacyMountPoints) != 0 {
-		ds.MountPoints = ds.LegacyMountPoints
+	if len(ds.Mountpoints) != 0 {
+		ds.MountPoints = ds.Mountpoints
 	}
 
-	ps := system.NewSystemPS()
-	ps.Log = ds.Log
-	ds.ps = ps
-
-	return nil
-}
-
-func (ds *DiskStats) Gather(acc telegraf.Accumulator) error {
 	disks, partitions, err := ds.ps.DiskUsage(ds.MountPoints, ds.IgnoreFS)
 	if err != nil {
 		return fmt.Errorf("error getting disk usage info: %s", err)
 	}
+
 	for i, du := range disks {
 		if du.Total == 0 {
 			// Skip dummy filesystem (procfs, cgroupfs, ...)
 			continue
 		}
-		mountOpts := MountOptions(partitions[i].Opts)
+		mountOpts := parseOptions(partitions[i].Opts)
 		tags := map[string]string{
 			"path":   du.Path,
 			"device": strings.Replace(partitions[i].Device, "/dev/", "", -1),
@@ -110,8 +101,13 @@ func (opts MountOptions) exists(opt string) bool {
 	return false
 }
 
+func parseOptions(opts string) MountOptions {
+	return strings.Split(opts, ",")
+}
+
 func init() {
+	ps := system.NewSystemPS()
 	inputs.Add("disk", func() telegraf.Input {
-		return &DiskStats{}
+		return &DiskStats{ps: ps}
 	})
 }

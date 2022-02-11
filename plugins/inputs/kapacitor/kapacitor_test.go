@@ -74,8 +74,7 @@ func TestKapacitor(t *testing.T) {
 
 func TestMissingStats(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := w.Write([]byte(`{}`))
-		require.NoError(t, err)
+		w.Write([]byte(`{}`))
 	}))
 	defer server.Close()
 
@@ -84,7 +83,7 @@ func TestMissingStats(t *testing.T) {
 	}
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	plugin.Gather(&acc)
 
 	require.False(t, acc.HasField("kapacitor_memstats", "alloc_bytes"))
 	require.True(t, acc.HasField("kapacitor", "num_tasks"))
@@ -93,8 +92,7 @@ func TestMissingStats(t *testing.T) {
 func TestErrorHandling(t *testing.T) {
 	badServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/endpoint" {
-			_, err := w.Write([]byte("not json"))
-			require.NoError(t, err)
+			_, _ = w.Write([]byte("not json"))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -106,7 +104,7 @@ func TestErrorHandling(t *testing.T) {
 	}
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	plugin.Gather(&acc)
 	acc.WaitError(1)
 	require.Equal(t, uint64(0), acc.NMetrics())
 }
@@ -122,7 +120,7 @@ func TestErrorHandling404(t *testing.T) {
 	}
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	plugin.Gather(&acc)
 	acc.WaitError(1)
 	require.Equal(t, uint64(0), acc.NMetrics())
 }

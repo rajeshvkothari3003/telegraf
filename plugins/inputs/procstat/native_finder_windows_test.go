@@ -2,9 +2,11 @@ package procstat
 
 import (
 	"fmt"
-	"os/user"
 	"testing"
 
+	"os/user"
+
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,7 +19,7 @@ func TestGather_RealPatternIntegration(t *testing.T) {
 	pids, err := pg.Pattern(`procstat`)
 	require.NoError(t, err)
 	fmt.Println(pids)
-	require.Equal(t, len(pids) > 0, true)
+	assert.Equal(t, len(pids) > 0, true)
 }
 
 func TestGather_RealFullPatternIntegration(t *testing.T) {
@@ -29,7 +31,7 @@ func TestGather_RealFullPatternIntegration(t *testing.T) {
 	pids, err := pg.FullPattern(`%procstat%`)
 	require.NoError(t, err)
 	fmt.Println(pids)
-	require.Equal(t, len(pids) > 0, true)
+	assert.Equal(t, len(pids) > 0, true)
 }
 
 func TestGather_RealUserIntegration(t *testing.T) {
@@ -43,5 +45,5 @@ func TestGather_RealUserIntegration(t *testing.T) {
 	pids, err := pg.UID(user.Username)
 	require.NoError(t, err)
 	fmt.Println(pids)
-	require.Equal(t, len(pids) > 0, true)
+	assert.Equal(t, len(pids) > 0, true)
 }

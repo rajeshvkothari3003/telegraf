@@ -18,7 +18,7 @@ func TestRequireMetricEqual(t *testing.T) {
 		{
 			name: "equal metrics should be equal",
 			got: func() telegraf.Metric {
-				m := metric.New(
+				m, _ := metric.New(
 					"test",
 					map[string]string{
 						"t1": "v1",
@@ -34,7 +34,7 @@ func TestRequireMetricEqual(t *testing.T) {
 				return m
 			}(),
 			want: func() telegraf.Metric {
-				m := metric.New(
+				m, _ := metric.New(
 					"test",
 					map[string]string{
 						"t1": "v1",

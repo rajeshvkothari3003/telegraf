@@ -18,7 +18,8 @@ import (
 type Disque struct {
 	Servers []string
 
-	c net.Conn
+	c   net.Conn
+	buf []byte
 }
 
 var sampleConfig = `
@@ -65,10 +66,11 @@ var ErrProtocolError = errors.New("disque protocol error")
 // Returns one of the errors encountered while gather stats (if any).
 func (d *Disque) Gather(acc telegraf.Accumulator) error {
 	if len(d.Servers) == 0 {
-		address := &url.URL{
+		url := &url.URL{
 			Host: ":7711",
 		}
-		return d.gatherServer(address, acc)
+		d.gatherServer(url, acc)
+		return nil
 	}
 
 	var wg sync.WaitGroup
@@ -85,10 +87,10 @@ func (d *Disque) Gather(acc telegraf.Accumulator) error {
 			u.Path = ""
 		}
 		wg.Add(1)
-		go func() {
+		go func(serv string) {
 			defer wg.Done()
 			acc.AddError(d.gatherServer(u, acc))
-		}()
+		}(serv)
 	}
 
 	wg.Wait()
@@ -100,6 +102,7 @@ const defaultPort = "7711"
 
 func (d *Disque) gatherServer(addr *url.URL, acc telegraf.Accumulator) error {
 	if d.c == nil {
+
 		_, _, err := net.SplitHostPort(addr.Host)
 		if err != nil {
 			addr.Host = addr.Host + ":" + defaultPort
@@ -113,9 +116,7 @@ func (d *Disque) gatherServer(addr *url.URL, acc telegraf.Accumulator) error {
 		if addr.User != nil {
 			pwd, set := addr.User.Password()
 			if set && pwd != "" {
-				if _, err := c.Write([]byte(fmt.Sprintf("AUTH %s\r\n", pwd))); err != nil {
-					return err
-				}
+				c.Write([]byte(fmt.Sprintf("AUTH %s\r\n", pwd)))
 
 				r := bufio.NewReader(c)
 
@@ -133,13 +134,9 @@ func (d *Disque) gatherServer(addr *url.URL, acc telegraf.Accumulator) error {
 	}
 
 	// Extend connection
-	if err := d.c.SetDeadline(time.Now().Add(defaultTimeout)); err != nil {
-		return err
-	}
+	d.c.SetDeadline(time.Now().Add(defaultTimeout))
 
-	if _, err := d.c.Write([]byte("info\r\n")); err != nil {
-		return err
-	}
+	d.c.Write([]byte("info\r\n"))
 
 	r := bufio.NewReader(d.c)
 

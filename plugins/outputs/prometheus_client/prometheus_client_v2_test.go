@@ -2,22 +2,21 @@ package prometheus
 
 import (
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf"
 	inputs "github.com/influxdata/telegraf/plugins/inputs/prometheus"
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMetricVersion2(t *testing.T) {
-	logger := testutil.Logger{Name: "outputs.prometheus_client"}
+	Logger := testutil.Logger{Name: "outputs.prometheus_client"}
 	tests := []struct {
 		name     string
 		output   *PrometheusClient
@@ -31,7 +30,7 @@ func TestMetricVersion2(t *testing.T) {
 				MetricVersion:     2,
 				CollectorsExclude: []string{"gocollector", "process"},
 				Path:              "/metrics",
-				Log:               logger,
+				Log:               Logger,
 			},
 			metrics: []telegraf.Metric{
 				testutil.MustMetric(
@@ -58,7 +57,7 @@ cpu_time_idle{host="example.org"} 42
 				MetricVersion:     2,
 				CollectorsExclude: []string{"gocollector", "process"},
 				Path:              "/metrics",
-				Log:               logger,
+				Log:               Logger,
 			},
 			metrics: []telegraf.Metric{
 				testutil.MustMetric(
@@ -87,7 +86,7 @@ rpc_duration_seconds_count 2693
 				CollectorsExclude: []string{"gocollector", "process"},
 				Path:              "/metrics",
 				ExportTimestamp:   true,
-				Log:               logger,
+				Log:               Logger,
 			},
 			metrics: []telegraf.Metric{
 				testutil.MustMetric(
@@ -115,7 +114,7 @@ cpu_time_idle{host="example.org"} 42 0
 				CollectorsExclude: []string{"gocollector", "process"},
 				Path:              "/metrics",
 				StringAsLabel:     true,
-				Log:               logger,
+				Log:               Logger,
 			},
 			metrics: []telegraf.Metric{
 				testutil.MustMetric(
@@ -142,7 +141,7 @@ cpu_time_idle{host="example.org"} 42
 				CollectorsExclude: []string{"gocollector", "process"},
 				Path:              "/metrics",
 				StringAsLabel:     false,
-				Log:               logger,
+				Log:               Logger,
 			},
 			metrics: []telegraf.Metric{
 				testutil.MustMetric(
@@ -168,7 +167,7 @@ cpu_time_idle 42
 				MetricVersion:     2,
 				CollectorsExclude: []string{"gocollector", "process"},
 				Path:              "/metrics",
-				Log:               logger,
+				Log:               Logger,
 			},
 			metrics: []telegraf.Metric{
 				testutil.MustMetric(
@@ -195,7 +194,7 @@ cpu_time_idle{host="example.org"} 42
 				MetricVersion:     2,
 				CollectorsExclude: []string{"gocollector", "process"},
 				Path:              "/metrics",
-				Log:               logger,
+				Log:               Logger,
 			},
 			metrics: []telegraf.Metric{
 				testutil.MustMetric(
@@ -277,7 +276,7 @@ cpu_usage_idle_count{cpu="cpu1"} 20
 				MetricVersion:     2,
 				CollectorsExclude: []string{"gocollector", "process"},
 				Path:              "/metrics",
-				Log:               logger,
+				Log:               Logger,
 			},
 			metrics: []telegraf.Metric{
 				testutil.MustMetric(
@@ -322,7 +321,7 @@ cpu_usage_idle_count{cpu="cpu1"} 20
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode)
 			defer resp.Body.Close()
-			body, err := io.ReadAll(resp.Body)
+			body, err := ioutil.ReadAll(resp.Body)
 			require.NoError(t, err)
 
 			require.Equal(t,
@@ -333,7 +332,7 @@ cpu_usage_idle_count{cpu="cpu1"} 20
 }
 
 func TestRoundTripMetricVersion2(t *testing.T) {
-	logger := testutil.Logger{Name: "outputs.prometheus_client"}
+	Logger := testutil.Logger{Name: "outputs.prometheus_client"}
 	tests := []struct {
 		name string
 		data []byte
@@ -415,8 +414,7 @@ rpc_duration_seconds_count 2693
 		t.Run(tt.name, func(t *testing.T) {
 			ts.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				_, err := w.Write(tt.data)
-				require.NoError(t, err)
+				w.Write(tt.data)
 			})
 
 			input := &inputs.Prometheus{
@@ -437,7 +435,7 @@ rpc_duration_seconds_count 2693
 				Listen:            "127.0.0.1:0",
 				Path:              defaultPath,
 				MetricVersion:     2,
-				Log:               logger,
+				Log:               Logger,
 				CollectorsExclude: []string{"gocollector", "process"},
 			}
 			err = output.Init()
@@ -453,9 +451,8 @@ rpc_duration_seconds_count 2693
 
 			resp, err := http.Get(output.URL())
 			require.NoError(t, err)
-			defer resp.Body.Close()
 
-			actual, err := io.ReadAll(resp.Body)
+			actual, err := ioutil.ReadAll(resp.Body)
 			require.NoError(t, err)
 
 			require.Equal(t,

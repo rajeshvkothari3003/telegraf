@@ -105,4 +105,5 @@ func gssapiAuthType(authType string) int {
 	default:
 		return 0
 	}
+
 }

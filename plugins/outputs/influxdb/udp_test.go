@@ -11,12 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/metric"
 	"github.com/influxdata/telegraf/plugins/outputs/influxdb"
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -24,7 +23,7 @@ var (
 )
 
 func getMetric() telegraf.Metric {
-	m := metric.New(
+	metric, err := metric.New(
 		"cpu",
 		map[string]string{},
 		map[string]interface{}{
@@ -32,8 +31,10 @@ func getMetric() telegraf.Metric {
 		},
 		time.Unix(0, 0),
 	)
-
-	return m
+	if err != nil {
+		panic(err)
+	}
+	return metric
 }
 
 func getURL() *url.URL {
@@ -61,7 +62,7 @@ type MockDialer struct {
 	DialContextF func(network, address string) (influxdb.Conn, error)
 }
 
-func (d *MockDialer) DialContext(_ context.Context, network string, address string) (influxdb.Conn, error) {
+func (d *MockDialer) DialContext(ctx context.Context, network string, address string) (influxdb.Conn, error) {
 	return d.DialContextF(network, address)
 }
 
@@ -92,7 +93,7 @@ func TestUDP_Simple(t *testing.T) {
 			DialContextF: func(network, address string) (influxdb.Conn, error) {
 				conn := &MockConn{
 					WriteF: func(b []byte) (n int, err error) {
-						buffer.Write(b) //nolint:revive // MockConn with always-success return
+						buffer.Write(b)
 						return 0, nil
 					},
 				}
@@ -201,7 +202,7 @@ func TestUDP_ErrorLogging(t *testing.T) {
 			},
 			metrics: []telegraf.Metric{
 				func() telegraf.Metric {
-					m := metric.New(
+					metric, _ := metric.New(
 						"cpu",
 						map[string]string{
 							"host": "example.org",
@@ -209,7 +210,7 @@ func TestUDP_ErrorLogging(t *testing.T) {
 						map[string]interface{}{},
 						time.Unix(0, 0),
 					)
-					return m
+					return metric
 				}(),
 			},
 			logContains: `could not serialize metric: "cpu,host=example.org": no serializable fields`,

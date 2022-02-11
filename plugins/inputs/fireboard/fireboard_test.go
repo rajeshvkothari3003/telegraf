@@ -16,8 +16,7 @@ func TestFireboard(t *testing.T) {
 	// Create a test server with the const response JSON
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, err := fmt.Fprintln(w, response)
-		require.NoError(t, err)
+		fmt.Fprintln(w, response)
 	}))
 	defer ts.Close()
 

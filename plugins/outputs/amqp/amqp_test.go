@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/streadway/amqp"
 	"github.com/stretchr/testify/require"
 )
@@ -15,6 +15,8 @@ type MockClient struct {
 
 	PublishCallCount int
 	CloseCallCount   int
+
+	t *testing.T
 }
 
 func (c *MockClient) Publish(key string, body []byte) error {
@@ -25,6 +27,10 @@ func (c *MockClient) Publish(key string, body []byte) error {
 func (c *MockClient) Close() error {
 	c.CloseCallCount++
 	return c.CloseF()
+}
+
+func MockConnect(config *ClientConfig) (Client, error) {
+	return &MockClient{}, nil
 }
 
 func NewMockClient() Client {
@@ -53,24 +59,24 @@ func TestConnect(t *testing.T) {
 				AuthMethod:         DefaultAuthMethod,
 				Database:           DefaultDatabase,
 				RetentionPolicy:    DefaultRetentionPolicy,
-				Timeout:            config.Duration(time.Second * 5),
-				connect: func(_ *ClientConfig) (Client, error) {
+				Timeout:            internal.Duration{Duration: time.Second * 5},
+				connect: func(config *ClientConfig) (Client, error) {
 					return NewMockClient(), nil
 				},
 			},
 			errFunc: func(t *testing.T, output *AMQP, err error) {
-				cfg := output.config
-				require.Equal(t, []string{DefaultURL}, cfg.brokers)
-				require.Equal(t, "", cfg.exchange)
-				require.Equal(t, "topic", cfg.exchangeType)
-				require.Equal(t, false, cfg.exchangePassive)
-				require.Equal(t, true, cfg.exchangeDurable)
-				require.Equal(t, amqp.Table(nil), cfg.exchangeArguments)
+				config := output.config
+				require.Equal(t, []string{DefaultURL}, config.brokers)
+				require.Equal(t, "", config.exchange)
+				require.Equal(t, "topic", config.exchangeType)
+				require.Equal(t, false, config.exchangePassive)
+				require.Equal(t, true, config.exchangeDurable)
+				require.Equal(t, amqp.Table(nil), config.exchangeArguments)
 				require.Equal(t, amqp.Table{
 					"database":         DefaultDatabase,
 					"retention_policy": DefaultRetentionPolicy,
-				}, cfg.headers)
-				require.Equal(t, amqp.Transient, cfg.deliveryMode)
+				}, config.headers)
+				require.Equal(t, amqp.Transient, config.deliveryMode)
 				require.NoError(t, err)
 			},
 		},
@@ -80,15 +86,15 @@ func TestConnect(t *testing.T) {
 				Headers: map[string]string{
 					"foo": "bar",
 				},
-				connect: func(_ *ClientConfig) (Client, error) {
+				connect: func(config *ClientConfig) (Client, error) {
 					return NewMockClient(), nil
 				},
 			},
 			errFunc: func(t *testing.T, output *AMQP, err error) {
-				cfg := output.config
+				config := output.config
 				require.Equal(t, amqp.Table{
 					"foo": "bar",
-				}, cfg.headers)
+				}, config.headers)
 				require.NoError(t, err)
 			},
 		},
@@ -98,15 +104,15 @@ func TestConnect(t *testing.T) {
 				ExchangeArguments: map[string]string{
 					"foo": "bar",
 				},
-				connect: func(_ *ClientConfig) (Client, error) {
+				connect: func(config *ClientConfig) (Client, error) {
 					return NewMockClient(), nil
 				},
 			},
 			errFunc: func(t *testing.T, output *AMQP, err error) {
-				cfg := output.config
+				config := output.config
 				require.Equal(t, amqp.Table{
 					"foo": "bar",
-				}, cfg.exchangeArguments)
+				}, config.exchangeArguments)
 				require.NoError(t, err)
 			},
 		},
@@ -116,18 +122,18 @@ func TestConnect(t *testing.T) {
 				URL:      "amqp://foo:bar@localhost",
 				Username: "telegraf",
 				Password: "pa$$word",
-				connect: func(_ *ClientConfig) (Client, error) {
+				connect: func(config *ClientConfig) (Client, error) {
 					return NewMockClient(), nil
 				},
 			},
 			errFunc: func(t *testing.T, output *AMQP, err error) {
-				cfg := output.config
+				config := output.config
 				require.Equal(t, []amqp.Authentication{
 					&amqp.PlainAuth{
 						Username: "telegraf",
 						Password: "pa$$word",
 					},
-				}, cfg.auth)
+				}, config.auth)
 
 				require.NoError(t, err)
 			},
@@ -136,13 +142,13 @@ func TestConnect(t *testing.T) {
 			name: "url support",
 			output: &AMQP{
 				URL: DefaultURL,
-				connect: func(_ *ClientConfig) (Client, error) {
+				connect: func(config *ClientConfig) (Client, error) {
 					return NewMockClient(), nil
 				},
 			},
 			errFunc: func(t *testing.T, output *AMQP, err error) {
-				cfg := output.config
-				require.Equal(t, []string{DefaultURL}, cfg.brokers)
+				config := output.config
+				require.Equal(t, []string{DefaultURL}, config.brokers)
 				require.NoError(t, err)
 			},
 		},

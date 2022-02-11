@@ -47,7 +47,7 @@ func Compile(filters []string) (Filter, error) {
 
 // hasMeta reports whether path contains any magic glob characters.
 func hasMeta(s string) bool {
-	return strings.ContainsAny(s, "*?[")
+	return strings.IndexAny(s, "*?[") >= 0
 }
 
 type filter struct {
@@ -79,24 +79,13 @@ func compileFilterNoGlob(filters []string) Filter {
 }
 
 type IncludeExcludeFilter struct {
-	include        Filter
-	exclude        Filter
-	includeDefault bool
-	excludeDefault bool
+	include Filter
+	exclude Filter
 }
 
 func NewIncludeExcludeFilter(
 	include []string,
 	exclude []string,
-) (Filter, error) {
-	return NewIncludeExcludeFilterDefaults(include, exclude, true, false)
-}
-
-func NewIncludeExcludeFilterDefaults(
-	include []string,
-	exclude []string,
-	includeDefault bool,
-	excludeDefault bool,
 ) (Filter, error) {
 	in, err := Compile(include)
 	if err != nil {
@@ -108,7 +97,7 @@ func NewIncludeExcludeFilterDefaults(
 		return nil, err
 	}
 
-	return &IncludeExcludeFilter{in, ex, includeDefault, excludeDefault}, nil
+	return &IncludeExcludeFilter{in, ex}, nil
 }
 
 func (f *IncludeExcludeFilter) Match(s string) bool {
@@ -116,17 +105,12 @@ func (f *IncludeExcludeFilter) Match(s string) bool {
 		if !f.include.Match(s) {
 			return false
 		}
-	} else if !f.includeDefault {
-		return false
 	}
 
 	if f.exclude != nil {
 		if f.exclude.Match(s) {
 			return false
 		}
-	} else if f.excludeDefault {
-		return false
 	}
-
 	return true
 }

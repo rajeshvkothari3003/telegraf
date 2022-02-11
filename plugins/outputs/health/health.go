@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
 	"github.com/influxdata/telegraf/internal"
 	tlsint "github.com/influxdata/telegraf/plugins/common/tls"
 	"github.com/influxdata/telegraf/plugins/outputs"
@@ -68,11 +67,11 @@ type Checker interface {
 }
 
 type Health struct {
-	ServiceAddress string          `toml:"service_address"`
-	ReadTimeout    config.Duration `toml:"read_timeout"`
-	WriteTimeout   config.Duration `toml:"write_timeout"`
-	BasicUsername  string          `toml:"basic_username"`
-	BasicPassword  string          `toml:"basic_password"`
+	ServiceAddress string            `toml:"service_address"`
+	ReadTimeout    internal.Duration `toml:"read_timeout"`
+	WriteTimeout   internal.Duration `toml:"write_timeout"`
+	BasicUsername  string            `toml:"basic_username"`
+	BasicPassword  string            `toml:"basic_password"`
 	tlsint.ServerConfig
 
 	Compares []*Compares     `toml:"compares"`
@@ -142,8 +141,8 @@ func (h *Health) Connect() error {
 	h.server = &http.Server{
 		Addr:         h.ServiceAddress,
 		Handler:      authHandler(h),
-		ReadTimeout:  time.Duration(h.ReadTimeout),
-		WriteTimeout: time.Duration(h.WriteTimeout),
+		ReadTimeout:  h.ReadTimeout.Duration,
+		WriteTimeout: h.WriteTimeout.Duration,
 		TLSConfig:    h.tlsConf,
 	}
 
@@ -179,7 +178,7 @@ func (h *Health) listen() (net.Listener, error) {
 	return net.Listen(h.network, h.address)
 }
 
-func (h *Health) ServeHTTP(rw http.ResponseWriter, _ *http.Request) {
+func (h *Health) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	var code = http.StatusOK
 	if !h.isHealthy() {
 		code = http.StatusServiceUnavailable
@@ -208,9 +207,9 @@ func (h *Health) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := h.server.Shutdown(ctx)
+	h.server.Shutdown(ctx)
 	h.wg.Wait()
-	return err
+	return nil
 }
 
 // Origin returns the URL of the HTTP server.
@@ -241,6 +240,7 @@ func (h *Health) getOrigin(listener net.Listener) string {
 		}
 		return origin.String()
 	}
+
 }
 
 func (h *Health) setHealthy(healthy bool) {
@@ -258,8 +258,8 @@ func (h *Health) isHealthy() bool {
 func NewHealth() *Health {
 	return &Health{
 		ServiceAddress: defaultServiceAddress,
-		ReadTimeout:    config.Duration(defaultReadTimeout),
-		WriteTimeout:   config.Duration(defaultWriteTimeout),
+		ReadTimeout:    internal.Duration{Duration: defaultReadTimeout},
+		WriteTimeout:   internal.Duration{Duration: defaultWriteTimeout},
 		healthy:        true,
 	}
 }

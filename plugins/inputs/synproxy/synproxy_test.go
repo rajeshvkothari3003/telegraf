@@ -1,15 +1,15 @@
-//go:build linux
 // +build linux
 
 package synproxy
 
 import (
+	"io/ioutil"
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSynproxyFileNormal(t *testing.T) {
@@ -38,8 +38,8 @@ func TestSynproxyFileHeaderMismatch(t *testing.T) {
 
 	acc := testutil.Accumulator{}
 	err := k.Gather(&acc)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid number of columns in data")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid number of columns in data")
 }
 
 func TestSynproxyFileInvalidHex(t *testing.T) {
@@ -52,15 +52,13 @@ func TestSynproxyFileInvalidHex(t *testing.T) {
 
 	acc := testutil.Accumulator{}
 	err := k.Gather(&acc)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid value")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid value")
 }
 
 func TestNoSynproxyFile(t *testing.T) {
 	tmpfile := makeFakeSynproxyFile([]byte(synproxyFileNormal))
 	// Remove file to generate "no such file" error
-	// Ignore errors if file does not yet exist
-	//nolint:errcheck,revive
 	os.Remove(tmpfile)
 
 	k := Synproxy{
@@ -69,7 +67,7 @@ func TestNoSynproxyFile(t *testing.T) {
 
 	acc := testutil.Accumulator{}
 	err := k.Gather(&acc)
-	require.Error(t, err)
+	assert.Error(t, err)
 }
 
 // Valid Synproxy file
@@ -149,13 +147,13 @@ func testSynproxyFileData(t *testing.T, fileData string, telegrafData map[string
 
 	acc := testutil.Accumulator{}
 	err := k.Gather(&acc)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	acc.AssertContainsFields(t, "synproxy", telegrafData)
 }
 
 func makeFakeSynproxyFile(content []byte) string {
-	tmpfile, err := os.CreateTemp("", "synproxy_test")
+	tmpfile, err := ioutil.TempFile("", "synproxy_test")
 	if err != nil {
 		panic(err)
 	}

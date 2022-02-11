@@ -8,11 +8,10 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"testing"
 )
-
-const requestID uint16 = 1
 
 var sizeTests = []struct {
 	size  uint32
@@ -125,7 +124,7 @@ func (c *writeOnlyConn) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (c *writeOnlyConn) Read(_ []byte) (int, error) {
+func (c *writeOnlyConn) Read(p []byte) (int, error) {
 	return 0, errors.New("conn is write-only")
 }
 
@@ -165,6 +164,7 @@ func nameValuePair11(nameData, valueData string) []byte {
 
 func makeRecord(
 	recordType recType,
+	requestID uint16,
 	contentData []byte,
 ) []byte {
 	requestIDB1 := byte(requestID >> 8)
@@ -185,13 +185,14 @@ func makeRecord(
 // request body
 var streamBeginTypeStdin = bytes.Join([][]byte{
 	// set up request 1
-	makeRecord(typeBeginRequest, []byte{0, byte(roleResponder), 0, 0, 0, 0, 0, 0}),
+	makeRecord(typeBeginRequest, 1,
+		[]byte{0, byte(roleResponder), 0, 0, 0, 0, 0, 0}),
 	// add required parameters to request 1
-	makeRecord(typeParams, nameValuePair11("REQUEST_METHOD", "GET")),
-	makeRecord(typeParams, nameValuePair11("SERVER_PROTOCOL", "HTTP/1.1")),
-	makeRecord(typeParams, nil),
+	makeRecord(typeParams, 1, nameValuePair11("REQUEST_METHOD", "GET")),
+	makeRecord(typeParams, 1, nameValuePair11("SERVER_PROTOCOL", "HTTP/1.1")),
+	makeRecord(typeParams, 1, nil),
 	// begin sending body of request 1
-	makeRecord(typeStdin, []byte("0123456789abcdef")),
+	makeRecord(typeStdin, 1, []byte("0123456789abcdef")),
 },
 	nil)
 
@@ -203,7 +204,7 @@ var cleanUpTests = []struct {
 	{
 		bytes.Join([][]byte{
 			streamBeginTypeStdin,
-			makeRecord(typeAbortRequest, nil),
+			makeRecord(typeAbortRequest, 1, nil),
 		},
 			nil),
 		ErrRequestAborted,
@@ -241,7 +242,7 @@ func TestChildServeCleansUp(t *testing.T) {
 			r *http.Request,
 		) {
 			// block on reading body of request
-			_, err := io.Copy(io.Discard, r.Body)
+			_, err := io.Copy(ioutil.Discard, r.Body)
 			if err != tt.err {
 				t.Errorf("Expected %#v, got %#v", tt.err, err)
 			}
@@ -264,7 +265,7 @@ func (rwNopCloser) Close() error {
 }
 
 // Verifies it doesn't crash. 	Issue 11824.
-func TestMalformedParams(_ *testing.T) {
+func TestMalformedParams(t *testing.T) {
 	input := []byte{
 		// beginRequest, requestId=1, contentLength=8, role=1, keepConn=1
 		1, 1, 0, 1, 0, 8, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0,
@@ -273,7 +274,7 @@ func TestMalformedParams(_ *testing.T) {
 		// end of params
 		1, 4, 0, 1, 0, 0, 0, 0,
 	}
-	rw := rwNopCloser{bytes.NewReader(input), io.Discard}
+	rw := rwNopCloser{bytes.NewReader(input), ioutil.Discard}
 	c := newChild(rw, http.DefaultServeMux)
 	c.serve()
 }

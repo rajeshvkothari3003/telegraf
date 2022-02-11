@@ -3,22 +3,19 @@ package exec
 import (
 	"bytes"
 	"fmt"
-	"io"
-	osExec "os/exec"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/kballard/go-shellquote"
-
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
 	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"github.com/influxdata/telegraf/plugins/parsers"
 	"github.com/influxdata/telegraf/plugins/parsers/nagios"
+	"github.com/kballard/go-shellquote"
 )
 
 const sampleConfig = `
@@ -42,12 +39,12 @@ const sampleConfig = `
   data_format = "influx"
 `
 
-const MaxStderrBytes int = 512
+const MaxStderrBytes = 512
 
 type Exec struct {
-	Commands []string        `toml:"commands"`
-	Command  string          `toml:"command"`
-	Timeout  config.Duration `toml:"timeout"`
+	Commands []string
+	Command  string
+	Timeout  internal.Duration
 
 	parser parsers.Parser
 
@@ -58,7 +55,7 @@ type Exec struct {
 func NewExec() *Exec {
 	return &Exec{
 		runner:  CommandRunner{},
-		Timeout: config.Duration(time.Second * 5),
+		Timeout: internal.Duration{Duration: time.Second * 5},
 	}
 }
 
@@ -77,7 +74,7 @@ func (c CommandRunner) Run(
 		return nil, nil, fmt.Errorf("exec: unable to parse command, %s", err)
 	}
 
-	cmd := osExec.Command(splitCmd[0], splitCmd[1:]...)
+	cmd := exec.Command(splitCmd[0], splitCmd[1:]...)
 
 	var (
 		out    bytes.Buffer
@@ -88,16 +85,16 @@ func (c CommandRunner) Run(
 
 	runErr := internal.RunTimeout(cmd, timeout)
 
-	out = removeWindowsCarriageReturns(out)
-	if stderr.Len() > 0 && !telegraf.Debug {
-		stderr = removeWindowsCarriageReturns(stderr)
-		stderr = c.truncate(stderr)
+	out = removeCarriageReturns(out)
+	if stderr.Len() > 0 {
+		stderr = removeCarriageReturns(stderr)
+		stderr = truncate(stderr)
 	}
 
 	return out.Bytes(), stderr.Bytes(), runErr
 }
 
-func (c CommandRunner) truncate(buf bytes.Buffer) bytes.Buffer {
+func truncate(buf bytes.Buffer) bytes.Buffer {
 	// Limit the number of bytes.
 	didTruncate := false
 	if buf.Len() > MaxStderrBytes {
@@ -112,36 +109,42 @@ func (c CommandRunner) truncate(buf bytes.Buffer) bytes.Buffer {
 		buf.Truncate(i)
 	}
 	if didTruncate {
-		//nolint:errcheck,revive // Will always return nil or panic
 		buf.WriteString("...")
 	}
 	return buf
 }
 
-// removeWindowsCarriageReturns removes all carriage returns from the input if the
+// removeCarriageReturns removes all carriage returns from the input if the
 // OS is Windows. It does not return any errors.
-func removeWindowsCarriageReturns(b bytes.Buffer) bytes.Buffer {
+func removeCarriageReturns(b bytes.Buffer) bytes.Buffer {
 	if runtime.GOOS == "windows" {
 		var buf bytes.Buffer
 		for {
-			byt, err := b.ReadBytes(0x0D)
-			byt = bytes.TrimRight(byt, "\x0d")
-			if len(byt) > 0 {
-				_, _ = buf.Write(byt)
+			byt, er := b.ReadBytes(0x0D)
+			end := len(byt)
+			if nil == er {
+				end--
 			}
-			if err == io.EOF {
-				return buf
+			if nil != byt {
+				buf.Write(byt[:end])
+			} else {
+				break
+			}
+			if nil != er {
+				break
 			}
 		}
+		b = buf
 	}
 	return b
+
 }
 
 func (e *Exec) ProcessCommand(command string, acc telegraf.Accumulator, wg *sync.WaitGroup) {
 	defer wg.Done()
 	_, isNagios := e.parser.(*nagios.NagiosParser)
 
-	out, errbuf, runErr := e.runner.Run(command, time.Duration(e.Timeout))
+	out, errbuf, runErr := e.runner.Run(command, e.Timeout.Duration)
 	if !isNagios && runErr != nil {
 		err := fmt.Errorf("exec: %s for command '%s': %s", runErr, command, string(errbuf))
 		acc.AddError(err)

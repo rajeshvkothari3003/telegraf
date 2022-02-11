@@ -55,14 +55,14 @@ func (mapper *EnumMapper) Init() error {
 		if mapping.Field != "" {
 			fieldFilter, err := filter.NewIncludeExcludeFilter([]string{mapping.Field}, nil)
 			if err != nil {
-				return fmt.Errorf("failed to create new field filter: %w", err)
+				return fmt.Errorf("Failed to create new field filter: %w", err)
 			}
 			mapper.FieldFilters[mapping.Field] = fieldFilter
 		}
 		if mapping.Tag != "" {
 			tagFilter, err := filter.NewIncludeExcludeFilter([]string{mapping.Tag}, nil)
 			if err != nil {
-				return fmt.Errorf("failed to create new tag filter: %s", err)
+				return fmt.Errorf("Failed to create new tag filter: %s", err)
 			}
 			mapper.TagFilters[mapping.Tag] = tagFilter
 		}
@@ -145,8 +145,6 @@ func adjustValue(in interface{}) interface{} {
 		return strconv.FormatBool(val)
 	case int64:
 		return strconv.FormatInt(val, 10)
-	case float64:
-		return strconv.FormatFloat(val, 'f', -1, 64)
 	case uint64:
 		return strconv.FormatUint(val, 10)
 	default:
@@ -155,7 +153,7 @@ func adjustValue(in interface{}) interface{} {
 }
 
 func (mapping *Mapping) mapValue(original string) (interface{}, bool) {
-	if mapped, found := mapping.ValueMappings[original]; found {
+	if mapped, found := mapping.ValueMappings[original]; found == true {
 		return mapped, true
 	}
 	if mapping.Default != nil {

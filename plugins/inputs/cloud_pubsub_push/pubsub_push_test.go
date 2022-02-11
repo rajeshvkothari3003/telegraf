@@ -15,7 +15,7 @@ import (
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/agent"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/models"
 	"github.com/influxdata/telegraf/plugins/parsers"
 	"github.com/influxdata/telegraf/testutil"
@@ -119,13 +119,15 @@ func TestServeHTTP(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 		pubPush := &PubSubPush{
-			Log:          testutil.Logger{},
-			Path:         "/",
-			MaxBodySize:  config.Size(test.maxsize),
+			Log:  testutil.Logger{},
+			Path: "/",
+			MaxBodySize: internal.Size{
+				Size: test.maxsize,
+			},
 			sem:          make(chan struct{}, 1),
 			undelivered:  make(map[telegraf.TrackingID]chan bool),
 			mu:           &sync.Mutex{},
-			WriteTimeout: config.Duration(time.Second * 1),
+			WriteTimeout: internal.Duration{Duration: time.Second * 1},
 		}
 
 		pubPush.ctx, pubPush.cancel = context.WithCancel(context.Background())
@@ -142,7 +144,7 @@ func TestServeHTTP(t *testing.T) {
 		pubPush.SetParser(p)
 
 		dst := make(chan telegraf.Metric, 1)
-		ro := models.NewRunningOutput(&testOutput{failWrite: test.fail}, &models.OutputConfig{}, 1, 1)
+		ro := models.NewRunningOutput("test", &testOutput{failWrite: test.fail}, &models.OutputConfig{}, 1, 1)
 		pubPush.acc = agent.NewAccumulator(&testMetricMaker{}, dst).WithTracking(1)
 
 		wg.Add(1)
@@ -152,16 +154,15 @@ func TestServeHTTP(t *testing.T) {
 		}()
 
 		wg.Add(1)
-		go func(d chan telegraf.Metric) {
+		go func(status int, d chan telegraf.Metric) {
 			defer wg.Done()
 			for m := range d {
 				ro.AddMetric(m)
-				//nolint:errcheck,revive // test will fail anyway if the write fails
 				ro.Write()
 			}
-		}(dst)
+		}(test.status, dst)
 
-		ctx, cancel := context.WithTimeout(req.Context(), time.Duration(pubPush.WriteTimeout))
+		ctx, cancel := context.WithTimeout(req.Context(), pubPush.WriteTimeout.Duration)
 		req = req.WithContext(ctx)
 
 		pubPush.ServeHTTP(rr, req)
@@ -217,7 +218,7 @@ func (*testOutput) SampleConfig() string {
 	return ""
 }
 
-func (t *testOutput) Write(_ []telegraf.Metric) error {
+func (t *testOutput) Write(metrics []telegraf.Metric) error {
 	if t.failWrite {
 		return fmt.Errorf("failed write")
 	}

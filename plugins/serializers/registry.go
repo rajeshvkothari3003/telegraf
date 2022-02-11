@@ -47,20 +47,14 @@ type Serializer interface {
 // Config is a struct that covers the data types needed for all serializer types,
 // and can be used to instantiate _any_ of the serializers.
 type Config struct {
-	// DataFormat can be one of the serializer types listed in NewSerializer.
+	// Dataformat can be one of the serializer types listed in NewSerializer.
 	DataFormat string `toml:"data_format"`
 
 	// Carbon2 metric format.
 	Carbon2Format string `toml:"carbon2_format"`
 
-	// Character used for metric name sanitization in Carbon2.
-	Carbon2SanitizeReplaceChar string `toml:"carbon2_sanitize_replace_char"`
-
 	// Support tags in graphite protocol
 	GraphiteTagSupport bool `toml:"graphite_tag_support"`
-
-	// Support tags which follow the spec
-	GraphiteTagSanitizeMode string `toml:"graphite_tag_sanitize_mode"`
 
 	// Character for separating metric name and field for Graphite tags
 	GraphiteSeparator string `toml:"graphite_separator"`
@@ -88,9 +82,6 @@ type Config struct {
 	// Timestamp units to use for JSON formatted output
 	TimestampUnits time.Duration `toml:"timestamp_units"`
 
-	// Timestamp format to use for JSON formatted output
-	TimestampFormat string `toml:"timestamp_format"`
-
 	// Include HEC routing fields for splunkmetric output
 	HecRouting bool `toml:"hec_routing"`
 
@@ -103,9 +94,6 @@ type Config struct {
 	// Use Strict rules to sanitize metric and tag names from invalid characters for Wavefront
 	// When enabled forward slash (/) and comma (,) will be accepted
 	WavefrontUseStrict bool `toml:"wavefront_use_strict"`
-
-	// Convert "_" in prefixes to "." for Wavefront
-	WavefrontDisablePrefixConversion bool `toml:"wavefront_disable_prefix_conversion"`
 
 	// Include the metric timestamp on each sample.
 	PrometheusExportTimestamp bool `toml:"prometheus_export_timestamp"`
@@ -127,17 +115,17 @@ func NewSerializer(config *Config) (Serializer, error) {
 	case "influx":
 		serializer, err = NewInfluxSerializerConfig(config)
 	case "graphite":
-		serializer, err = NewGraphiteSerializer(config.Prefix, config.Template, config.GraphiteTagSupport, config.GraphiteTagSanitizeMode, config.GraphiteSeparator, config.Templates)
+		serializer, err = NewGraphiteSerializer(config.Prefix, config.Template, config.GraphiteTagSupport, config.GraphiteSeparator, config.Templates)
 	case "json":
-		serializer, err = NewJSONSerializer(config.TimestampUnits, config.TimestampFormat)
+		serializer, err = NewJSONSerializer(config.TimestampUnits)
 	case "splunkmetric":
 		serializer, err = NewSplunkmetricSerializer(config.HecRouting, config.SplunkmetricMultiMetric)
 	case "nowmetric":
 		serializer, err = NewNowSerializer()
 	case "carbon2":
-		serializer, err = NewCarbon2Serializer(config.Carbon2Format, config.Carbon2SanitizeReplaceChar)
+		serializer, err = NewCarbon2Serializer(config.Carbon2Format)
 	case "wavefront":
-		serializer, err = NewWavefrontSerializer(config.Prefix, config.WavefrontUseStrict, config.WavefrontSourceOverride, config.WavefrontDisablePrefixConversion)
+		serializer, err = NewWavefrontSerializer(config.Prefix, config.WavefrontUseStrict, config.WavefrontSourceOverride)
 	case "prometheus":
 		serializer, err = NewPrometheusSerializer(config)
 	case "prometheusremotewrite":
@@ -145,7 +133,7 @@ func NewSerializer(config *Config) (Serializer, error) {
 	case "msgpack":
 		serializer, err = NewMsgpackSerializer()
 	default:
-		err = fmt.Errorf("invalid data format: %s", config.DataFormat)
+		err = fmt.Errorf("Invalid data format: %s", config.DataFormat)
 	}
 	return serializer, err
 }
@@ -190,16 +178,16 @@ func NewPrometheusSerializer(config *Config) (Serializer, error) {
 	})
 }
 
-func NewWavefrontSerializer(prefix string, useStrict bool, sourceOverride []string, disablePrefixConversions bool) (Serializer, error) {
-	return wavefront.NewSerializer(prefix, useStrict, sourceOverride, disablePrefixConversions)
+func NewWavefrontSerializer(prefix string, useStrict bool, sourceOverride []string) (Serializer, error) {
+	return wavefront.NewSerializer(prefix, useStrict, sourceOverride)
 }
 
-func NewJSONSerializer(timestampUnits time.Duration, timestampFormat string) (Serializer, error) {
-	return json.NewSerializer(timestampUnits, timestampFormat)
+func NewJSONSerializer(timestampUnits time.Duration) (Serializer, error) {
+	return json.NewSerializer(timestampUnits)
 }
 
-func NewCarbon2Serializer(carbon2format string, carbon2SanitizeReplaceChar string) (Serializer, error) {
-	return carbon2.NewSerializer(carbon2format, carbon2SanitizeReplaceChar)
+func NewCarbon2Serializer(carbon2format string) (Serializer, error) {
+	return carbon2.NewSerializer(carbon2format)
 }
 
 func NewSplunkmetricSerializer(splunkmetricHecRouting bool, splunkmetricMultimetric bool) (Serializer, error) {
@@ -232,7 +220,7 @@ func NewInfluxSerializer() (Serializer, error) {
 	return influx.NewSerializer(), nil
 }
 
-func NewGraphiteSerializer(prefix, template string, tagSupport bool, tagSanitizeMode string, separator string, templates []string) (Serializer, error) {
+func NewGraphiteSerializer(prefix, template string, tagSupport bool, separator string, templates []string) (Serializer, error) {
 	graphiteTemplates, defaultTemplate, err := graphite.InitGraphiteTemplates(templates)
 
 	if err != nil {
@@ -243,21 +231,16 @@ func NewGraphiteSerializer(prefix, template string, tagSupport bool, tagSanitize
 		template = defaultTemplate
 	}
 
-	if tagSanitizeMode == "" {
-		tagSanitizeMode = "strict"
-	}
-
 	if separator == "" {
 		separator = "."
 	}
 
 	return &graphite.GraphiteSerializer{
-		Prefix:          prefix,
-		Template:        template,
-		TagSupport:      tagSupport,
-		TagSanitizeMode: tagSanitizeMode,
-		Separator:       separator,
-		Templates:       graphiteTemplates,
+		Prefix:     prefix,
+		Template:   template,
+		TagSupport: tagSupport,
+		Separator:  separator,
+		Templates:  graphiteTemplates,
 	}, nil
 }
 

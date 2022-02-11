@@ -15,7 +15,6 @@ type MongodbData struct {
 	DbData        []DbData
 	ColData       []ColData
 	ShardHostData []DbData
-	TopStatsData  []DbData
 }
 
 type DbData struct {
@@ -38,7 +37,7 @@ func NewMongodbData(statLine *StatLine, tags map[string]string) *MongodbData {
 	}
 }
 
-var defaultStats = map[string]string{
+var DefaultStats = map[string]string{
 	"uptime_ns":                 "UptimeNanos",
 	"inserts":                   "InsertCnt",
 	"inserts_per_sec":           "Insert",
@@ -95,7 +94,7 @@ var defaultStats = map[string]string{
 	"total_docs_scanned":        "TotalObjectsScanned",
 }
 
-var defaultAssertsStats = map[string]string{
+var DefaultAssertsStats = map[string]string{
 	"assert_regular":   "Regular",
 	"assert_warning":   "Warning",
 	"assert_msg":       "Msg",
@@ -103,7 +102,7 @@ var defaultAssertsStats = map[string]string{
 	"assert_rollovers": "Rollovers",
 }
 
-var defaultCommandsStats = map[string]string{
+var DefaultCommandsStats = map[string]string{
 	"aggregate_command_total":        "AggregateCommandTotal",
 	"aggregate_command_failed":       "AggregateCommandFailed",
 	"count_command_total":            "CountCommandTotal",
@@ -124,7 +123,7 @@ var defaultCommandsStats = map[string]string{
 	"update_command_failed":          "UpdateCommandFailed",
 }
 
-var defaultLatencyStats = map[string]string{
+var DefaultLatencyStats = map[string]string{
 	"latency_writes_count":   "WriteOpsCnt",
 	"latency_writes":         "WriteLatency",
 	"latency_reads_count":    "ReadOpsCnt",
@@ -133,7 +132,7 @@ var defaultLatencyStats = map[string]string{
 	"latency_commands":       "CommandLatency",
 }
 
-var defaultReplStats = map[string]string{
+var DefaultReplStats = map[string]string{
 	"repl_inserts":                             "InsertRCnt",
 	"repl_inserts_per_sec":                     "InsertR",
 	"repl_queries":                             "QueryRCnt",
@@ -165,37 +164,37 @@ var defaultReplStats = map[string]string{
 	"repl_executor_unsignaled_events":          "ReplExecutorUnsignaledEvents",
 }
 
-var defaultClusterStats = map[string]string{
+var DefaultClusterStats = map[string]string{
 	"jumbo_chunks": "JumboChunksCount",
 }
 
-var defaultShardStats = map[string]string{
+var DefaultShardStats = map[string]string{
 	"total_in_use":     "TotalInUse",
 	"total_available":  "TotalAvailable",
 	"total_created":    "TotalCreated",
 	"total_refreshing": "TotalRefreshing",
 }
 
-var shardHostStats = map[string]string{
+var ShardHostStats = map[string]string{
 	"in_use":     "InUse",
 	"available":  "Available",
 	"created":    "Created",
 	"refreshing": "Refreshing",
 }
 
-var mmapStats = map[string]string{
+var MmapStats = map[string]string{
 	"mapped_megabytes":     "Mapped",
 	"non-mapped_megabytes": "NonMapped",
 	"page_faults":          "FaultsCnt",
 	"page_faults_per_sec":  "Faults",
 }
 
-var wiredTigerStats = map[string]string{
+var WiredTigerStats = map[string]string{
 	"percent_cache_dirty": "CacheDirtyPercent",
 	"percent_cache_used":  "CacheUsedPercent",
 }
 
-var wiredTigerExtStats = map[string]string{
+var WiredTigerExtStats = map[string]string{
 	"wtcache_tracked_dirty_bytes":          "TrackedDirtyBytes",
 	"wtcache_current_bytes":                "CurrentCachedBytes",
 	"wtcache_max_bytes_configured":         "MaxBytesConfigured",
@@ -216,7 +215,7 @@ var wiredTigerExtStats = map[string]string{
 	"wtcache_unmodified_pages_evicted":     "UnmodifiedPagesEvicted",
 }
 
-var defaultTCMallocStats = map[string]string{
+var DefaultTCMallocStats = map[string]string{
 	"tcmalloc_current_allocated_bytes":          "TCMallocCurrentAllocatedBytes",
 	"tcmalloc_heap_size":                        "TCMallocHeapSize",
 	"tcmalloc_central_cache_free_bytes":         "TCMallocCentralCacheFreeBytes",
@@ -238,54 +237,31 @@ var defaultTCMallocStats = map[string]string{
 	"tcmalloc_pageheap_total_reserve_bytes":     "TCMallocPageheapTotalReserveBytes",
 }
 
-var defaultStorageStats = map[string]string{
+var DefaultStorageStats = map[string]string{
 	"storage_freelist_search_bucket_exhausted": "StorageFreelistSearchBucketExhausted",
 	"storage_freelist_search_requests":         "StorageFreelistSearchRequests",
 	"storage_freelist_search_scanned":          "StorageFreelistSearchScanned",
 }
 
-var dbDataStats = map[string]string{
-	"collections":   "Collections",
-	"objects":       "Objects",
-	"avg_obj_size":  "AvgObjSize",
-	"data_size":     "DataSize",
-	"storage_size":  "StorageSize",
-	"num_extents":   "NumExtents",
-	"indexes":       "Indexes",
-	"index_size":    "IndexSize",
-	"ok":            "Ok",
-	"fs_used_size":  "FsUsedSize",
-	"fs_total_size": "FsTotalSize",
+var DbDataStats = map[string]string{
+	"collections":  "Collections",
+	"objects":      "Objects",
+	"avg_obj_size": "AvgObjSize",
+	"data_size":    "DataSize",
+	"storage_size": "StorageSize",
+	"num_extents":  "NumExtents",
+	"indexes":      "Indexes",
+	"index_size":   "IndexSize",
+	"ok":           "Ok",
 }
 
-var colDataStats = map[string]string{
+var ColDataStats = map[string]string{
 	"count":            "Count",
 	"size":             "Size",
 	"avg_obj_size":     "AvgObjSize",
 	"storage_size":     "StorageSize",
 	"total_index_size": "TotalIndexSize",
 	"ok":               "Ok",
-}
-
-var topDataStats = map[string]string{
-	"total_time":       "TotalTime",
-	"total_count":      "TotalCount",
-	"read_lock_time":   "ReadLockTime",
-	"read_lock_count":  "ReadLockCount",
-	"write_lock_time":  "WriteLockTime",
-	"write_lock_count": "WriteLockCount",
-	"queries_time":     "QueriesTime",
-	"queries_count":    "QueriesCount",
-	"get_more_time":    "GetMoreTime",
-	"get_more_count":   "GetMoreCount",
-	"insert_time":      "InsertTime",
-	"insert_count":     "InsertCount",
-	"update_time":      "UpdateTime",
-	"update_count":     "UpdateCount",
-	"remove_time":      "RemoveTime",
-	"remove_count":     "RemoveCount",
-	"commands_time":    "CommandsTime",
-	"commands_count":   "CommandsCount",
 }
 
 func (d *MongodbData) AddDbStats() {
@@ -296,7 +272,7 @@ func (d *MongodbData) AddDbStats() {
 			Fields: make(map[string]interface{}),
 		}
 		newDbData.Fields["type"] = "db_stat"
-		for key, value := range dbDataStats {
+		for key, value := range DbDataStats {
 			val := dbStatLine.FieldByName(value).Interface()
 			newDbData.Fields[key] = val
 		}
@@ -313,7 +289,7 @@ func (d *MongodbData) AddColStats() {
 			Fields: make(map[string]interface{}),
 		}
 		newColData.Fields["type"] = "col_stat"
-		for key, value := range colDataStats {
+		for key, value := range ColDataStats {
 			val := colStatLine.FieldByName(value).Interface()
 			newColData.Fields[key] = val
 		}
@@ -329,7 +305,7 @@ func (d *MongodbData) AddShardHostStats() {
 			Fields: make(map[string]interface{}),
 		}
 		newDbData.Fields["type"] = "shard_host_stat"
-		for k, v := range shardHostStats {
+		for k, v := range ShardHostStats {
 			val := hostStatLine.FieldByName(v).Interface()
 			newDbData.Fields[k] = val
 		}
@@ -337,32 +313,16 @@ func (d *MongodbData) AddShardHostStats() {
 	}
 }
 
-func (d *MongodbData) AddTopStats() {
-	for _, topStat := range d.StatLine.TopStatLines {
-		topStatLine := reflect.ValueOf(&topStat).Elem()
-		newTopStatData := &DbData{
-			Name:   topStat.CollectionName,
-			Fields: make(map[string]interface{}),
-		}
-		newTopStatData.Fields["type"] = "top_stat"
-		for key, value := range topDataStats {
-			val := topStatLine.FieldByName(value).Interface()
-			newTopStatData.Fields[key] = val
-		}
-		d.TopStatsData = append(d.TopStatsData, *newTopStatData)
-	}
-}
-
 func (d *MongodbData) AddDefaultStats() {
 	statLine := reflect.ValueOf(d.StatLine).Elem()
-	d.addStat(statLine, defaultStats)
+	d.addStat(statLine, DefaultStats)
 	if d.StatLine.NodeType != "" {
-		d.addStat(statLine, defaultReplStats)
+		d.addStat(statLine, DefaultReplStats)
 		d.Tags["node_type"] = d.StatLine.NodeType
 	}
 
 	if d.StatLine.ReadLatency > 0 {
-		d.addStat(statLine, defaultLatencyStats)
+		d.addStat(statLine, DefaultLatencyStats)
 	}
 
 	if d.StatLine.ReplSetName != "" {
@@ -377,23 +337,23 @@ func (d *MongodbData) AddDefaultStats() {
 		d.add("version", d.StatLine.Version)
 	}
 
-	d.addStat(statLine, defaultAssertsStats)
-	d.addStat(statLine, defaultClusterStats)
-	d.addStat(statLine, defaultCommandsStats)
-	d.addStat(statLine, defaultShardStats)
-	d.addStat(statLine, defaultStorageStats)
-	d.addStat(statLine, defaultTCMallocStats)
+	d.addStat(statLine, DefaultAssertsStats)
+	d.addStat(statLine, DefaultClusterStats)
+	d.addStat(statLine, DefaultCommandsStats)
+	d.addStat(statLine, DefaultShardStats)
+	d.addStat(statLine, DefaultStorageStats)
+	d.addStat(statLine, DefaultTCMallocStats)
 
 	if d.StatLine.StorageEngine == "mmapv1" || d.StatLine.StorageEngine == "rocksdb" {
-		d.addStat(statLine, mmapStats)
+		d.addStat(statLine, MmapStats)
 	} else if d.StatLine.StorageEngine == "wiredTiger" {
-		for key, value := range wiredTigerStats {
+		for key, value := range WiredTigerStats {
 			val := statLine.FieldByName(value).Interface()
 			percentVal := fmt.Sprintf("%.1f", val.(float64)*100)
 			floatVal, _ := strconv.ParseFloat(percentVal, 64)
 			d.add(key, floatVal)
 		}
-		d.addStat(statLine, wiredTigerExtStats)
+		d.addStat(statLine, WiredTigerExtStats)
 		d.add("page_faults", d.StatLine.FaultsCnt)
 	}
 }
@@ -448,15 +408,5 @@ func (d *MongodbData) flush(acc telegraf.Accumulator) {
 			d.StatLine.Time,
 		)
 		host.Fields = make(map[string]interface{})
-	}
-	for _, col := range d.TopStatsData {
-		d.Tags["collection"] = col.Name
-		acc.AddFields(
-			"mongodb_top_stats",
-			col.Fields,
-			d.Tags,
-			d.StatLine.Time,
-		)
-		col.Fields = make(map[string]interface{})
 	}
 }

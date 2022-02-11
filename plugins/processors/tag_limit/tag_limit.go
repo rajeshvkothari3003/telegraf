@@ -2,9 +2,9 @@ package taglimit
 
 import (
 	"fmt"
-
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/plugins/processors"
+	"log"
 )
 
 const sampleConfig = `
@@ -16,9 +16,8 @@ const sampleConfig = `
 `
 
 type TagLimit struct {
-	Limit    int             `toml:"limit"`
-	Keep     []string        `toml:"keep"`
-	Log      telegraf.Logger `toml:"-"`
+	Limit    int      `toml:"limit"`
+	Keep     []string `toml:"keep"`
 	init     bool
 	keepTags map[string]string
 }
@@ -50,7 +49,7 @@ func (d *TagLimit) initOnce() error {
 func (d *TagLimit) Apply(in ...telegraf.Metric) []telegraf.Metric {
 	err := d.initOnce()
 	if err != nil {
-		d.Log.Errorf("Could not create tag_limit processor: %v", err)
+		log.Printf("E! [processors.tag_limit] could not create tag_limit processor: %v", err)
 		return in
 	}
 	for _, point := range in {

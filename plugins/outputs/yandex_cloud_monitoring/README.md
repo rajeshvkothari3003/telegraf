@@ -1,8 +1,9 @@
 # Yandex Cloud Monitoring
 
-This plugin will send custom metrics to [Yandex Cloud Monitoring](https://cloud.yandex.com/services/monitoring).
+This plugin will send custom metrics to Yandex Cloud Monitoring. 
+https://cloud.yandex.com/services/monitoring
 
-## Configuration
+### Configuration:
 
 ```toml
 [[outputs.yandex_cloud_monitoring]]

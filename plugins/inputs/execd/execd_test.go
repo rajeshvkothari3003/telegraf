@@ -139,8 +139,8 @@ func (tm *TestMetricMaker) LogName() string {
 	return tm.Name()
 }
 
-func (tm *TestMetricMaker) MakeMetric(aMetric telegraf.Metric) telegraf.Metric {
-	return aMetric
+func (tm *TestMetricMaker) MakeMetric(metric telegraf.Metric) telegraf.Metric {
+	return metric
 }
 
 func (tm *TestMetricMaker) Log() telegraf.Logger {
@@ -153,27 +153,24 @@ var counter = flag.Bool("counter", false,
 func TestMain(m *testing.M) {
 	flag.Parse()
 	if *counter {
-		if err := runCounterProgram(); err != nil {
-			os.Exit(1)
-		}
+		runCounterProgram()
 		os.Exit(0)
 	}
 	code := m.Run()
 	os.Exit(code)
 }
 
-func runCounterProgram() error {
+func runCounterProgram() {
 	i := 0
 	serializer, err := serializers.NewInfluxSerializer()
 	if err != nil {
-		//nolint:errcheck,revive // Test will fail anyway
 		fmt.Fprintln(os.Stderr, "ERR InfluxSerializer failed to load")
-		return err
+		os.Exit(1)
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
-		m := metric.New("counter",
+		metric, _ := metric.New("counter",
 			map[string]string{},
 			map[string]interface{}{
 				"count": i,
@@ -182,15 +179,12 @@ func runCounterProgram() error {
 		)
 		i++
 
-		b, err := serializer.Serialize(m)
+		b, err := serializer.Serialize(metric)
 		if err != nil {
-			//nolint:errcheck,revive // Test will fail anyway
 			fmt.Fprintf(os.Stderr, "ERR %v\n", err)
-			return err
+			os.Exit(1)
 		}
-		if _, err := fmt.Fprint(os.Stdout, string(b)); err != nil {
-			return err
-		}
+		fmt.Fprint(os.Stdout, string(b))
 	}
-	return nil
+
 }

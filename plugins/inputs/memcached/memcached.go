@@ -129,9 +129,7 @@ func (m *Memcached) gatherServer(
 	}
 
 	// Extend connection
-	if err := conn.SetDeadline(time.Now().Add(defaultTimeout)); err != nil {
-		return err
-	}
+	conn.SetDeadline(time.Now().Add(defaultTimeout))
 
 	// Read and write buffer
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))

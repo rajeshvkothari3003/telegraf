@@ -59,8 +59,10 @@ func (t *Template) Apply(line string, joiner string) (string, map[string]string,
 			field = append(field, fields[i])
 		case "field*":
 			field = append(field, fields[i:]...)
+			break
 		case "measurement*":
 			measurement = append(measurement, fields[i:]...)
+			break
 		default:
 			tags[tag] = append(tags[tag], fields[i])
 		}

@@ -3,16 +3,16 @@ package hddtemp
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"github.com/influxdata/telegraf/plugins/inputs/hddtemp/go-hddtemp"
+	hddtemp "github.com/influxdata/telegraf/plugins/inputs/hddtemp/go-hddtemp"
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockFetcher struct {
 }
 
-func (h *mockFetcher) Fetch(_ string) ([]hddtemp.Disk, error) {
+func (h *mockFetcher) Fetch(address string) ([]hddtemp.Disk, error) {
 	return []hddtemp.Disk{
 		{
 			DeviceName:  "Disk1",
@@ -27,23 +27,24 @@ func (h *mockFetcher) Fetch(_ string) ([]hddtemp.Disk, error) {
 			Unit:        "C",
 		},
 	}, nil
+
 }
 func newMockFetcher() *mockFetcher {
 	return &mockFetcher{}
 }
 
 func TestFetch(t *testing.T) {
-	hddTemp := &HDDTemp{
+	hddtemp := &HDDTemp{
 		fetcher: newMockFetcher(),
 		Address: "localhost",
 		Devices: []string{"*"},
 	}
 
 	acc := &testutil.Accumulator{}
-	err := hddTemp.Gather(acc)
+	err := hddtemp.Gather(acc)
 
 	require.NoError(t, err)
-	require.Equal(t, acc.NFields(), 2)
+	assert.Equal(t, acc.NFields(), 2)
 
 	var tests = []struct {
 		fields map[string]interface{}
@@ -78,4 +79,5 @@ func TestFetch(t *testing.T) {
 	for _, test := range tests {
 		acc.AssertContainsTaggedFields(t, "hddtemp", test.fields, test.tags)
 	}
+
 }

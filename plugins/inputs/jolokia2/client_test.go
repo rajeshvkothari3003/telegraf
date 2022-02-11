@@ -3,13 +3,12 @@ package jolokia2
 import (
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/influxdata/telegraf/testutil"
-	"github.com/stretchr/testify/require"
 )
 
 func TestJolokia2_ClientAuthRequest(t *testing.T) {
@@ -20,8 +19,11 @@ func TestJolokia2_ClientAuthRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, _ = r.BasicAuth()
 
-		body, _ := io.ReadAll(r.Body)
-		require.NoError(t, json.Unmarshal(body, &requests))
+		body, _ := ioutil.ReadAll(r.Body)
+		err := json.Unmarshal(body, &requests)
+		if err != nil {
+			t.Error(err)
+		}
 
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -38,14 +40,22 @@ func TestJolokia2_ClientAuthRequest(t *testing.T) {
 	`, server.URL))
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
+	plugin.Gather(&acc)
 
-	require.EqualValuesf(t, "sally", username, "Expected to post with username %s, but was %s", "sally", username)
-	require.EqualValuesf(t, "seashore", password, "Expected to post with password %s, but was %s", "seashore", password)
-	require.NotZero(t, len(requests), "Expected to post a request body, but was empty.")
+	if username != "sally" {
+		t.Errorf("Expected to post with username %s, but was %s", "sally", username)
+	}
+	if password != "seashore" {
+		t.Errorf("Expected to post with password %s, but was %s", "seashore", password)
+	}
+	if len(requests) == 0 {
+		t.Fatal("Expected to post a request body, but was empty.")
+	}
 
-	request := requests[0]["mbean"]
-	require.EqualValuesf(t, "hello:foo=bar", request, "Expected to query mbean %s, but was %s", "hello:foo=bar", request)
+	request := requests[0]
+	if expect := "hello:foo=bar"; request["mbean"] != expect {
+		t.Errorf("Expected to query mbean %s, but was %s", expect, request["mbean"])
+	}
 }
 
 func TestJolokia2_ClientProxyAuthRequest(t *testing.T) {
@@ -56,11 +66,13 @@ func TestJolokia2_ClientProxyAuthRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, _ = r.BasicAuth()
 
-		body, _ := io.ReadAll(r.Body)
-		require.NoError(t, json.Unmarshal(body, &requests))
+		body, _ := ioutil.ReadAll(r.Body)
+		err := json.Unmarshal(body, &requests)
+		if err != nil {
+			t.Error(err)
+		}
+
 		w.WriteHeader(http.StatusOK)
-		_, err := fmt.Fprintf(w, "[]")
-		require.NoError(t, err)
 	}))
 	defer server.Close()
 
@@ -81,22 +93,37 @@ func TestJolokia2_ClientProxyAuthRequest(t *testing.T) {
 	`, server.URL))
 
 	var acc testutil.Accumulator
-	require.NoError(t, plugin.Gather(&acc))
-	require.EqualValuesf(t, "sally", username, "Expected to post with username %s, but was %s", "sally", username)
-	require.EqualValuesf(t, "seashore", password, "Expected to post with password %s, but was %s", "seashore", password)
-	require.NotZero(t, len(requests), "Expected to post a request body, but was empty.")
+	plugin.Gather(&acc)
+
+	if username != "sally" {
+		t.Errorf("Expected to post with username %s, but was %s", "sally", username)
+	}
+	if password != "seashore" {
+		t.Errorf("Expected to post with password %s, but was %s", "seashore", password)
+	}
+	if len(requests) == 0 {
+		t.Fatal("Expected to post a request body, but was empty.")
+	}
 
 	request := requests[0]
-	expected := "hello:foo=bar"
-	require.EqualValuesf(t, expected, request["mbean"], "Expected to query mbean %s, but was %s", expected, request["mbean"])
+	if expect := "hello:foo=bar"; request["mbean"] != expect {
+		t.Errorf("Expected to query mbean %s, but was %s", expect, request["mbean"])
+	}
 
 	target, ok := request["target"].(map[string]interface{})
-	require.True(t, ok, "Expected a proxy target, but was empty.")
+	if !ok {
+		t.Fatal("Expected a proxy target, but was empty.")
+	}
 
-	expected = "service:jmx:rmi:///jndi/rmi://target:9010/jmxrmi"
-	require.Equalf(t, expected, target["url"], "Expected proxy target url %s, but was %s", expected, target["url"])
-	expected = "jack"
-	require.Equalf(t, expected, target["user"], "Expected proxy target username %s, but was %s", expected, target["user"])
-	expected = "benimble"
-	require.Equalf(t, expected, target["password"], "Expected proxy target username %s, but was %s", expected, target["password"])
+	if expect := "service:jmx:rmi:///jndi/rmi://target:9010/jmxrmi"; target["url"] != expect {
+		t.Errorf("Expected proxy target url %s, but was %s", expect, target["url"])
+	}
+
+	if expect := "jack"; target["user"] != expect {
+		t.Errorf("Expected proxy target username %s, but was %s", expect, target["user"])
+	}
+
+	if expect := "benimble"; target["password"] != expect {
+		t.Errorf("Expected proxy target password %s, but was %s", expect, target["password"])
+	}
 }

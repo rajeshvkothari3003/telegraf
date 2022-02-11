@@ -3,7 +3,7 @@ package procstat
 import (
 	"bytes"
 	"fmt"
-	"os"
+	"io/ioutil"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -13,7 +13,7 @@ import (
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/plugins/inputs"
-	"github.com/shirou/gopsutil/v3/process"
+	"github.com/shirou/gopsutil/process"
 )
 
 var (
@@ -24,20 +24,19 @@ var (
 type PID int32
 
 type Procstat struct {
-	PidFinder              string `toml:"pid_finder"`
-	PidFile                string `toml:"pid_file"`
-	Exe                    string
-	Pattern                string
-	Prefix                 string
-	CmdLineTag             bool `toml:"cmdline_tag"`
-	ProcessName            string
-	User                   string
-	SystemdUnit            string `toml:"systemd_unit"`
-	IncludeSystemdChildren bool   `toml:"include_systemd_children"`
-	CGroup                 string `toml:"cgroup"`
-	PidTag                 bool
-	WinService             string `toml:"win_service"`
-	Mode                   string
+	PidFinder   string `toml:"pid_finder"`
+	PidFile     string `toml:"pid_file"`
+	Exe         string
+	Pattern     string
+	Prefix      string
+	CmdLineTag  bool `toml:"cmdline_tag"`
+	ProcessName string
+	User        string
+	SystemdUnit string
+	CGroup      string `toml:"cgroup"`
+	PidTag      bool
+	WinService  string `toml:"win_service"`
+	Mode        string
 
 	solarisMode bool
 
@@ -57,10 +56,9 @@ var sampleConfig = `
   # pattern = "nginx"
   ## user as argument for pgrep (ie, pgrep -u <user>)
   # user = "nginx"
-  ## Systemd unit name, supports globs when include_systemd_children is set to true
+  ## Systemd unit name
   # systemd_unit = "nginx.service"
-  # include_systemd_children = false
-  ## CGroup name or path, supports globs
+  ## CGroup name or path
   # cgroup = "systemd/system.slice/nginx.service"
 
   ## Windows service name
@@ -102,12 +100,6 @@ func (p *Procstat) Description() string {
 	return "Monitor process cpu and memory usage"
 }
 
-type PidsTags struct {
-	PIDS []PID
-	Tags map[string]string
-	Err  error
-}
-
 func (p *Procstat) Gather(acc telegraf.Accumulator) error {
 	if p.createPIDFinder == nil {
 		switch p.PidFinder {
@@ -119,59 +111,45 @@ func (p *Procstat) Gather(acc telegraf.Accumulator) error {
 			p.PidFinder = "pgrep"
 			p.createPIDFinder = defaultPIDFinder
 		}
+
 	}
 	if p.createProcess == nil {
 		p.createProcess = defaultProcess
 	}
 
-	pidCount := 0
+	pids, tags, err := p.findPids()
 	now := time.Now()
-	newProcs := make(map[PID]Process, len(p.procs))
-	pidTags := p.findPids()
-	for _, pidTag := range pidTags {
-		pids := pidTag.PIDS
-		tags := pidTag.Tags
-		err := pidTag.Err
-		pidCount += len(pids)
-		if err != nil {
-			fields := map[string]interface{}{
-				"pid_count":   0,
-				"running":     0,
-				"result_code": 1,
-			}
-			tags := map[string]string{
-				"pid_finder": p.PidFinder,
-				"result":     "lookup_error",
-			}
-			acc.AddFields("procstat_lookup", fields, tags, now)
-			return err
-		}
 
-		err = p.updateProcesses(pids, tags, p.procs, newProcs)
-		if err != nil {
-			acc.AddError(fmt.Errorf("procstat getting process, exe: [%s] pidfile: [%s] pattern: [%s] user: [%s] %s",
-				p.Exe, p.PidFile, p.Pattern, p.User, err.Error()))
+	if err != nil {
+		fields := map[string]interface{}{
+			"pid_count":   0,
+			"running":     0,
+			"result_code": 1,
 		}
+		tags := map[string]string{
+			"pid_finder": p.PidFinder,
+			"result":     "lookup_error",
+		}
+		acc.AddFields("procstat_lookup", fields, tags, now)
+		return err
 	}
 
-	p.procs = newProcs
+	procs, err := p.updateProcesses(pids, tags, p.procs)
+	if err != nil {
+		acc.AddError(fmt.Errorf("procstat getting process, exe: [%s] pidfile: [%s] pattern: [%s] user: [%s] %s",
+			p.Exe, p.PidFile, p.Pattern, p.User, err.Error()))
+	}
+	p.procs = procs
+
 	for _, proc := range p.procs {
 		p.addMetric(proc, acc, now)
 	}
 
-	tags := make(map[string]string)
-	for _, pidTag := range pidTags {
-		for key, value := range pidTag.Tags {
-			tags[key] = value
-		}
-	}
-
 	fields := map[string]interface{}{
-		"pid_count":   pidCount,
-		"running":     len(p.procs),
+		"pid_count":   len(pids),
+		"running":     len(procs),
 		"result_code": 0,
 	}
-
 	tags["pid_finder"] = p.PidFinder
 	tags["result"] = "success"
 	acc.AddFields("procstat_lookup", fields, tags, now)
@@ -212,9 +190,9 @@ func (p *Procstat) addMetric(proc Process, acc telegraf.Accumulator, t time.Time
 	//If cmd_line tag is true and it is not already set add cmdline as a tag
 	if p.CmdLineTag {
 		if _, ok := proc.Tags()["cmdline"]; !ok {
-			cmdline, err := proc.Cmdline()
+			Cmdline, err := proc.Cmdline()
 			if err == nil {
-				proc.Tags()["cmdline"] = cmdline
+				proc.Tags()["cmdline"] = Cmdline
 			}
 		}
 	}
@@ -342,7 +320,9 @@ func (p *Procstat) addMetric(proc Process, acc telegraf.Accumulator, t time.Time
 }
 
 // Update monitored Processes
-func (p *Procstat) updateProcesses(pids []PID, tags map[string]string, prevInfo map[PID]Process, procs map[PID]Process) error {
+func (p *Procstat) updateProcesses(pids []PID, tags map[string]string, prevInfo map[PID]Process) (map[PID]Process, error) {
+	procs := make(map[PID]Process, len(prevInfo))
+
 	for _, pid := range pids {
 		info, ok := prevInfo[pid]
 		if ok {
@@ -377,7 +357,7 @@ func (p *Procstat) updateProcesses(pids []PID, tags map[string]string, prevInfo 
 			}
 		}
 	}
-	return nil
+	return procs, nil
 }
 
 // Create and return PIDGatherer lazily
@@ -393,33 +373,15 @@ func (p *Procstat) getPIDFinder() (PIDFinder, error) {
 }
 
 // Get matching PIDs and their initial tags
-func (p *Procstat) findPids() []PidsTags {
-	var pidTags []PidsTags
-
-	if p.SystemdUnit != "" {
-		groups := p.systemdUnitPIDs()
-		return groups
-	} else if p.CGroup != "" {
-		groups := p.cgroupPIDs()
-		return groups
-	} else {
-		f, err := p.getPIDFinder()
-		if err != nil {
-			pidTags = append(pidTags, PidsTags{nil, nil, err})
-			return pidTags
-		}
-		pids, tags, err := p.SimpleFindPids(f)
-		pidTags = append(pidTags, PidsTags{pids, tags, err})
-	}
-
-	return pidTags
-}
-
-// Get matching PIDs and their initial tags
-func (p *Procstat) SimpleFindPids(f PIDFinder) ([]PID, map[string]string, error) {
+func (p *Procstat) findPids() ([]PID, map[string]string, error) {
 	var pids []PID
 	tags := make(map[string]string)
 	var err error
+
+	f, err := p.getPIDFinder()
+	if err != nil {
+		return nil, nil, err
+	}
 
 	if p.PidFile != "" {
 		pids, err = f.PidFile(p.PidFile)
@@ -433,6 +395,12 @@ func (p *Procstat) SimpleFindPids(f PIDFinder) ([]PID, map[string]string, error)
 	} else if p.User != "" {
 		pids, err = f.UID(p.User)
 		tags = map[string]string{"user": p.User}
+	} else if p.SystemdUnit != "" {
+		pids, err = p.systemdUnitPIDs()
+		tags = map[string]string{"systemd_unit": p.SystemdUnit}
+	} else if p.CGroup != "" {
+		pids, err = p.cgroupPIDs()
+		tags = map[string]string{"cgroup": p.CGroup}
 	} else if p.WinService != "" {
 		pids, err = p.winServicePIDs()
 		tags = map[string]string{"win_service": p.WinService}
@@ -446,23 +414,8 @@ func (p *Procstat) SimpleFindPids(f PIDFinder) ([]PID, map[string]string, error)
 // execCommand is so tests can mock out exec.Command usage.
 var execCommand = exec.Command
 
-func (p *Procstat) systemdUnitPIDs() []PidsTags {
-	if p.IncludeSystemdChildren {
-		p.CGroup = fmt.Sprintf("systemd/system.slice/%s", p.SystemdUnit)
-		return p.cgroupPIDs()
-	}
-
-	var pidTags []PidsTags
-
-	pids, err := p.simpleSystemdUnitPIDs()
-	tags := map[string]string{"systemd_unit": p.SystemdUnit}
-	pidTags = append(pidTags, PidsTags{pids, tags, err})
-	return pidTags
-}
-
-func (p *Procstat) simpleSystemdUnitPIDs() ([]PID, error) {
+func (p *Procstat) systemdUnitPIDs() ([]PID, error) {
 	var pids []PID
-
 	cmd := execCommand("systemctl", "show", p.SystemdUnit)
 	out, err := cmd.Output()
 	if err != nil {
@@ -485,43 +438,18 @@ func (p *Procstat) simpleSystemdUnitPIDs() ([]PID, error) {
 		}
 		pids = append(pids, PID(pid))
 	}
-
 	return pids, nil
 }
 
-func (p *Procstat) cgroupPIDs() []PidsTags {
-	var pidTags []PidsTags
+func (p *Procstat) cgroupPIDs() ([]PID, error) {
+	var pids []PID
 
 	procsPath := p.CGroup
 	if procsPath[0] != '/' {
 		procsPath = "/sys/fs/cgroup/" + procsPath
 	}
-	items, err := filepath.Glob(procsPath)
-	if err != nil {
-		pidTags = append(pidTags, PidsTags{nil, nil, fmt.Errorf("glob failed '%s'", err)})
-		return pidTags
-	}
-	for _, item := range items {
-		pids, err := p.singleCgroupPIDs(item)
-		tags := map[string]string{"cgroup": p.CGroup, "cgroup_full": item}
-		pidTags = append(pidTags, PidsTags{pids, tags, err})
-	}
-
-	return pidTags
-}
-
-func (p *Procstat) singleCgroupPIDs(path string) ([]PID, error) {
-	var pids []PID
-
-	ok, err := isDir(path)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, fmt.Errorf("not a directory %s", path)
-	}
-	procsPath := filepath.Join(path, "cgroup.procs")
-	out, err := os.ReadFile(procsPath)
+	procsPath = filepath.Join(procsPath, "cgroup.procs")
+	out, err := ioutil.ReadFile(procsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -537,14 +465,6 @@ func (p *Procstat) singleCgroupPIDs(path string) ([]PID, error) {
 	}
 
 	return pids, nil
-}
-
-func isDir(path string) (bool, error) {
-	result, err := os.Stat(path)
-	if err != nil {
-		return false, err
-	}
-	return result.IsDir(), nil
 }
 
 func (p *Procstat) winServicePIDs() ([]PID, error) {

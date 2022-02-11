@@ -1,4 +1,3 @@
-//go:build !windows
 // +build !windows
 
 package intel_rdt
@@ -37,29 +36,29 @@ func TestParseCoresMeasurement(t *testing.T) {
 			metricsValues["MBT"])
 
 		expectedCores := "37,44"
-		expectedTimestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.Local)
+		expectedTimestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.UTC)
 
-		result, err := parseCoresMeasurement(measurement)
+		resultCoresString, resultValues, resultTimestamp, err := parseCoresMeasurement(measurement)
 
 		assert.Nil(t, err)
-		assert.Equal(t, expectedCores, result.cores)
-		assert.Equal(t, expectedTimestamp, result.time)
-		assert.Equal(t, result.values[0], metricsValues["IPC"])
-		assert.Equal(t, result.values[1], metricsValues["LLC_Misses"])
-		assert.Equal(t, result.values[2], metricsValues["LLC"])
-		assert.Equal(t, result.values[3], metricsValues["MBL"])
-		assert.Equal(t, result.values[4], metricsValues["MBR"])
-		assert.Equal(t, result.values[5], metricsValues["MBT"])
+		assert.Equal(t, expectedCores, resultCoresString)
+		assert.Equal(t, expectedTimestamp, resultTimestamp)
+		assert.Equal(t, resultValues[0], metricsValues["IPC"])
+		assert.Equal(t, resultValues[1], metricsValues["LLC_Misses"])
+		assert.Equal(t, resultValues[2], metricsValues["LLC"])
+		assert.Equal(t, resultValues[3], metricsValues["MBL"])
+		assert.Equal(t, resultValues[4], metricsValues["MBR"])
+		assert.Equal(t, resultValues[5], metricsValues["MBT"])
 	})
 	t.Run("not valid measurement string", func(t *testing.T) {
 		measurement := "not, valid, measurement"
 
-		result, err := parseCoresMeasurement(measurement)
+		resultCoresString, resultValues, resultTimestamp, err := parseCoresMeasurement(measurement)
 
 		assert.NotNil(t, err)
-		assert.Equal(t, "", result.cores)
-		assert.Nil(t, result.values)
-		assert.Equal(t, time.Time{}, result.time)
+		assert.Equal(t, "", resultCoresString)
+		assert.Nil(t, resultValues)
+		assert.Equal(t, time.Time{}, resultTimestamp)
 	})
 	t.Run("not valid values string", func(t *testing.T) {
 		measurement := fmt.Sprintf("%s,%s,%s,%s,%f,%f,%f,%f",
@@ -72,12 +71,12 @@ func TestParseCoresMeasurement(t *testing.T) {
 			metricsValues["MBR"],
 			metricsValues["MBT"])
 
-		result, err := parseCoresMeasurement(measurement)
+		resultCoresString, resultValues, resultTimestamp, err := parseCoresMeasurement(measurement)
 
 		assert.NotNil(t, err)
-		assert.Equal(t, "", result.cores)
-		assert.Nil(t, result.values)
-		assert.Equal(t, time.Time{}, result.time)
+		assert.Equal(t, "", resultCoresString)
+		assert.Nil(t, resultValues)
+		assert.Equal(t, time.Time{}, resultTimestamp)
 	})
 	t.Run("not valid timestamp format", func(t *testing.T) {
 		invalidTimestamp := "2020-08-12-21 13:34:"
@@ -91,12 +90,12 @@ func TestParseCoresMeasurement(t *testing.T) {
 			metricsValues["MBR"],
 			metricsValues["MBT"])
 
-		result, err := parseCoresMeasurement(measurement)
+		resultCoresString, resultValues, resultTimestamp, err := parseCoresMeasurement(measurement)
 
 		assert.NotNil(t, err)
-		assert.Equal(t, "", result.cores)
-		assert.Nil(t, result.values)
-		assert.Equal(t, time.Time{}, result.time)
+		assert.Equal(t, "", resultCoresString)
+		assert.Nil(t, resultValues)
+		assert.Equal(t, time.Time{}, resultTimestamp)
 	})
 }
 
@@ -119,36 +118,44 @@ func TestParseProcessesMeasurement(t *testing.T) {
 			metricsValues["MBT"])
 
 		expectedCores := "37,44"
-		expectedTimestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.Local)
+		expectedTimestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.UTC)
 
 		newMeasurement := processMeasurement{
 			name:        processName,
 			measurement: measurement,
 		}
-		result, err := parseProcessesMeasurement(newMeasurement)
+		actualProcess, resultCoresString, resultValues, resultTimestamp, err := parseProcessesMeasurement(newMeasurement)
 
 		assert.Nil(t, err)
-		assert.Equal(t, processName, result.process)
-		assert.Equal(t, expectedCores, result.cores)
-		assert.Equal(t, expectedTimestamp, result.time)
-		assert.Equal(t, result.values[0], metricsValues["IPC"])
-		assert.Equal(t, result.values[1], metricsValues["LLC_Misses"])
-		assert.Equal(t, result.values[2], metricsValues["LLC"])
-		assert.Equal(t, result.values[3], metricsValues["MBL"])
-		assert.Equal(t, result.values[4], metricsValues["MBR"])
-		assert.Equal(t, result.values[5], metricsValues["MBT"])
+		assert.Equal(t, processName, actualProcess)
+		assert.Equal(t, expectedCores, resultCoresString)
+		assert.Equal(t, expectedTimestamp, resultTimestamp)
+		assert.Equal(t, resultValues[0], metricsValues["IPC"])
+		assert.Equal(t, resultValues[1], metricsValues["LLC_Misses"])
+		assert.Equal(t, resultValues[2], metricsValues["LLC"])
+		assert.Equal(t, resultValues[3], metricsValues["MBL"])
+		assert.Equal(t, resultValues[4], metricsValues["MBR"])
+		assert.Equal(t, resultValues[5], metricsValues["MBT"])
 	})
+	t.Run("not valid measurement string", func(t *testing.T) {
+		processName := "process_name"
+		measurement := "invalid,measurement,format"
 
-	invalidTimestamp := "2020-20-20-31"
-	negativeTests := []struct {
-		name        string
-		measurement string
-	}{{
-		name:        "not valid measurement string",
-		measurement: "invalid,measurement,format",
-	}, {
-		name: "not valid timestamp format",
-		measurement: fmt.Sprintf("%s,%s,%s,%f,%f,%f,%f,%f,%f",
+		newMeasurement := processMeasurement{
+			name:        processName,
+			measurement: measurement,
+		}
+		actualProcess, resultCoresString, resultValues, resultTimestamp, err := parseProcessesMeasurement(newMeasurement)
+
+		assert.NotNil(t, err)
+		assert.Equal(t, "", actualProcess)
+		assert.Equal(t, "", resultCoresString)
+		assert.Nil(t, resultValues)
+		assert.Equal(t, time.Time{}, resultTimestamp)
+	})
+	t.Run("not valid timestamp format", func(t *testing.T) {
+		invalidTimestamp := "2020-20-20-31"
+		measurement := fmt.Sprintf("%s,%s,%s,%f,%f,%f,%f,%f,%f",
 			invalidTimestamp,
 			pids,
 			cores,
@@ -157,42 +164,44 @@ func TestParseProcessesMeasurement(t *testing.T) {
 			metricsValues["LLC"],
 			metricsValues["MBL"],
 			metricsValues["MBR"],
-			metricsValues["MBT"]),
-	},
-		{
-			name: "not valid values string",
-			measurement: fmt.Sprintf("%s,%s,%s,%s,%s,%f,%f,%f,%f",
-				timestamp,
-				pids,
-				cores,
-				"1##",
-				"da",
-				metricsValues["LLC"],
-				metricsValues["MBL"],
-				metricsValues["MBR"],
-				metricsValues["MBT"]),
-		},
-		{
-			name:        "not valid csv line with quotes",
-			measurement: "0000-08-02 0:00:00,,\",,,,,,,,,,,,,,,,,,,,,,,,\",,",
-		},
-	}
+			metricsValues["MBT"])
 
-	for _, test := range negativeTests {
-		t.Run(test.name, func(t *testing.T) {
-			newMeasurement := processMeasurement{
-				name:        processName,
-				measurement: test.measurement,
-			}
-			result, err := parseProcessesMeasurement(newMeasurement)
+		newMeasurement := processMeasurement{
+			name:        processName,
+			measurement: measurement,
+		}
+		actualProcess, resultCoresString, resultValues, resultTimestamp, err := parseProcessesMeasurement(newMeasurement)
 
-			assert.NotNil(t, err)
-			assert.Equal(t, "", result.process)
-			assert.Equal(t, "", result.cores)
-			assert.Nil(t, result.values)
-			assert.Equal(t, time.Time{}, result.time)
-		})
-	}
+		assert.NotNil(t, err)
+		assert.Equal(t, "", actualProcess)
+		assert.Equal(t, "", resultCoresString)
+		assert.Nil(t, resultValues)
+		assert.Equal(t, time.Time{}, resultTimestamp)
+	})
+	t.Run("not valid values string", func(t *testing.T) {
+		measurement := fmt.Sprintf("%s,%s,%s,%s,%s,%f,%f,%f,%f",
+			timestamp,
+			pids,
+			cores,
+			"1##",
+			"da",
+			metricsValues["LLC"],
+			metricsValues["MBL"],
+			metricsValues["MBR"],
+			metricsValues["MBT"])
+
+		newMeasurement := processMeasurement{
+			name:        processName,
+			measurement: measurement,
+		}
+		actualProcess, resultCoresString, resultValues, resultTimestamp, err := parseProcessesMeasurement(newMeasurement)
+
+		assert.NotNil(t, err)
+		assert.Equal(t, "", actualProcess)
+		assert.Equal(t, "", resultCoresString)
+		assert.Nil(t, resultValues)
+		assert.Equal(t, time.Time{}, resultTimestamp)
+	})
 }
 
 func TestAddToAccumulatorCores(t *testing.T) {
@@ -202,9 +211,9 @@ func TestAddToAccumulatorCores(t *testing.T) {
 
 		cores := "1,2,3"
 		metricsValues := []float64{1, 2, 3, 4, 5, 6}
-		timestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.Local)
+		timestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.UTC)
 
-		publisher.addToAccumulatorCores(parsedCoresMeasurement{cores, metricsValues, timestamp})
+		publisher.addToAccumulatorCores(cores, metricsValues, timestamp)
 
 		for _, test := range testCoreMetrics {
 			acc.AssertContainsTaggedFields(t, "rdt_metric", test.fields, test.tags)
@@ -216,9 +225,9 @@ func TestAddToAccumulatorCores(t *testing.T) {
 
 		cores := "1,2,3"
 		metricsValues := []float64{1, 2, 3, 4, 5, 6}
-		timestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.Local)
+		timestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.UTC)
 
-		publisher.addToAccumulatorCores(parsedCoresMeasurement{cores, metricsValues, timestamp})
+		publisher.addToAccumulatorCores(cores, metricsValues, timestamp)
 
 		for _, test := range testCoreMetricsShortened {
 			acc.AssertDoesNotContainsTaggedFields(t, "rdt_metric", test.fields, test.tags)
@@ -234,9 +243,9 @@ func TestAddToAccumulatorProcesses(t *testing.T) {
 		process := "process_name"
 		cores := "1,2,3"
 		metricsValues := []float64{1, 2, 3, 4, 5, 6}
-		timestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.Local)
+		timestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.UTC)
 
-		publisher.addToAccumulatorProcesses(parsedProcessMeasurement{process, cores, metricsValues, timestamp})
+		publisher.addToAccumulatorProcesses(process, cores, metricsValues, timestamp)
 
 		for _, test := range testCoreProcesses {
 			acc.AssertContainsTaggedFields(t, "rdt_metric", test.fields, test.tags)
@@ -249,9 +258,9 @@ func TestAddToAccumulatorProcesses(t *testing.T) {
 		process := "process_name"
 		cores := "1,2,3"
 		metricsValues := []float64{1, 2, 3, 4, 5, 6}
-		timestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.Local)
+		timestamp := time.Date(2020, 8, 12, 13, 34, 36, 0, time.UTC)
 
-		publisher.addToAccumulatorProcesses(parsedProcessMeasurement{process, cores, metricsValues, timestamp})
+		publisher.addToAccumulatorProcesses(process, cores, metricsValues, timestamp)
 
 		for _, test := range testCoreProcessesShortened {
 			acc.AssertDoesNotContainsTaggedFields(t, "rdt_metric", test.fields, test.tags)

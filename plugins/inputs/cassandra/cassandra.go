@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -49,11 +49,13 @@ type jmxMetric interface {
 	addTagsFields(out map[string]interface{})
 }
 
-func newJavaMetric(acc telegraf.Accumulator, host string, metric string) *javaMetric {
+func newJavaMetric(host string, metric string,
+	acc telegraf.Accumulator) *javaMetric {
 	return &javaMetric{host: host, metric: metric, acc: acc}
 }
 
-func newCassandraMetric(acc telegraf.Accumulator, host string, metric string) *cassandraMetric {
+func newCassandraMetric(host string, metric string,
+	acc telegraf.Accumulator) *cassandraMetric {
 	return &cassandraMetric{host: host, metric: metric, acc: acc}
 }
 
@@ -70,15 +72,13 @@ func addValuesAsFields(values map[string]interface{}, fields map[string]interfac
 func parseJmxMetricRequest(mbean string) map[string]string {
 	tokens := make(map[string]string)
 	classAndPairs := strings.Split(mbean, ":")
-	switch classAndPairs[0] {
-	case "org.apache.cassandra.metrics":
+	if classAndPairs[0] == "org.apache.cassandra.metrics" {
 		tokens["class"] = "cassandra"
-	case "java.lang":
+	} else if classAndPairs[0] == "java.lang" {
 		tokens["class"] = "java"
-	default:
+	} else {
 		return tokens
 	}
-
 	pairs := strings.Split(classAndPairs[1], ",")
 	for _, pair := range pairs {
 		p := strings.Split(pair, "=")
@@ -129,7 +129,9 @@ func (j javaMetric) addTagsFields(out map[string]interface{}) {
 	}
 }
 
-func addCassandraMetric(mbean string, c cassandraMetric, values map[string]interface{}) {
+func addCassandraMetric(mbean string, c cassandraMetric,
+	values map[string]interface{}) {
+
 	tags := make(map[string]string)
 	fields := make(map[string]interface{})
 	tokens := parseJmxMetricRequest(mbean)
@@ -137,9 +139,11 @@ func addCassandraMetric(mbean string, c cassandraMetric, values map[string]inter
 	tags["cassandra_host"] = c.host
 	addValuesAsFields(values, fields, tags["mname"])
 	c.acc.AddFields(tokens["class"]+tokens["type"], fields, tags)
+
 }
 
 func (c cassandraMetric) addTagsFields(out map[string]interface{}) {
+
 	r := out["request"]
 
 	tokens := parseJmxMetricRequest(r.(map[string]interface{})["mbean"].(string))
@@ -147,21 +151,22 @@ func (c cassandraMetric) addTagsFields(out map[string]interface{}) {
 	// maps in the json response
 	if (tokens["type"] == "Table" || tokens["type"] == "ColumnFamily") && (tokens["keyspace"] == "*" ||
 		tokens["scope"] == "*") {
-		valuesMap, ok := out["value"]
-		if !ok {
+		if valuesMap, ok := out["value"]; ok {
+			for k, v := range valuesMap.(map[string]interface{}) {
+				addCassandraMetric(k, c, v.(map[string]interface{}))
+			}
+		} else {
 			c.acc.AddError(fmt.Errorf("missing key 'value' in '%s' output response: %v", c.metric, out))
 			return
-		}
-		for k, v := range valuesMap.(map[string]interface{}) {
-			addCassandraMetric(k, c, v.(map[string]interface{}))
 		}
 	} else {
-		values, ok := out["value"]
-		if !ok {
+		if values, ok := out["value"]; ok {
+			addCassandraMetric(r.(map[string]interface{})["mbean"].(string),
+				c, values.(map[string]interface{}))
+		} else {
 			c.acc.AddError(fmt.Errorf("missing key 'value' in '%s' output response: %v", c.metric, out))
 			return
 		}
-		addCassandraMetric(r.(map[string]interface{})["mbean"].(string), c, values.(map[string]interface{}))
 	}
 }
 
@@ -217,7 +222,7 @@ func (c *Cassandra) getAttr(requestURL *url.URL) (map[string]interface{}, error)
 	}
 
 	// read body
-	body, err := io.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -276,10 +281,10 @@ func (c *Cassandra) Gather(acc telegraf.Accumulator) error {
 
 			var m jmxMetric
 			if strings.HasPrefix(metric, "/java.lang:") {
-				m = newJavaMetric(acc, serverTokens["host"], metric)
+				m = newJavaMetric(serverTokens["host"], metric, acc)
 			} else if strings.HasPrefix(metric,
 				"/org.apache.cassandra.metrics:") {
-				m = newCassandraMetric(acc, serverTokens["host"], metric)
+				m = newCassandraMetric(serverTokens["host"], metric, acc)
 			} else {
 				// unsupported metric type
 				acc.AddError(fmt.Errorf("unsupported Cassandra metric [%s], skipping", metric))

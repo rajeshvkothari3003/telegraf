@@ -14,8 +14,7 @@ import (
 func TestBasic(t *testing.T) {
 	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/endpoint" {
-			_, err := w.Write([]byte(basicJSON))
-			require.NoError(t, err)
+			_, _ = w.Write([]byte(basicJSON))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -62,8 +61,7 @@ func TestBasic(t *testing.T) {
 func TestInfluxDB(t *testing.T) {
 	fakeInfluxServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/endpoint" {
-			_, err := w.Write([]byte(influxReturn))
-			require.NoError(t, err)
+			_, _ = w.Write([]byte(influxReturn))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -123,8 +121,7 @@ func TestInfluxDB(t *testing.T) {
 func TestInfluxDB2(t *testing.T) {
 	fakeInfluxServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/endpoint" {
-			_, err := w.Write([]byte(influxReturn2))
-			require.NoError(t, err)
+			_, _ = w.Write([]byte(influxReturn2))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -149,8 +146,7 @@ func TestInfluxDB2(t *testing.T) {
 func TestErrorHandling(t *testing.T) {
 	badServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/endpoint" {
-			_, err := w.Write([]byte("not json"))
-			require.NoError(t, err)
+			_, _ = w.Write([]byte("not json"))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -168,8 +164,7 @@ func TestErrorHandling(t *testing.T) {
 func TestErrorHandling404(t *testing.T) {
 	badServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/endpoint" {
-			_, err := w.Write([]byte(basicJSON))
-			require.NoError(t, err)
+			_, _ = w.Write([]byte(basicJSON))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -187,8 +182,7 @@ func TestErrorHandling404(t *testing.T) {
 func TestErrorResponse(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		_, err := w.Write([]byte(`{"error": "unable to parse authentication credentials"}`))
-		require.NoError(t, err)
+		w.Write([]byte(`{"error": "unable to parse authentication credentials"}`))
 	}))
 	defer ts.Close()
 

@@ -33,23 +33,26 @@ func newFcgiClient(h string, args ...interface{}) (*conn, error) {
 	return fcgi, err
 }
 
-func (c *conn) Request(env map[string]string, requestData string) (retout []byte, reterr []byte, err error) {
+func (c *conn) Request(
+	env map[string]string,
+	requestData string,
+) (retout []byte, reterr []byte, err error) {
 	defer c.rwc.Close()
 	var reqID uint16 = 1
 
 	err = c.writeBeginRequest(reqID, uint16(roleResponder), 0)
 	if err != nil {
-		return nil, nil, err
+		return
 	}
 
 	err = c.writePairs(typeParams, reqID, env)
 	if err != nil {
-		return nil, nil, err
+		return
 	}
 
 	if len(requestData) > 0 {
 		if err = c.writeRecord(typeStdin, reqID, []byte(requestData)); err != nil {
-			return nil, nil, err
+			return
 		}
 	}
 
@@ -79,5 +82,5 @@ READ_LOOP:
 		}
 	}
 
-	return retout, reterr, err
+	return
 }

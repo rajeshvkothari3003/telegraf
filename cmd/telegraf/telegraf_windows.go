@@ -1,7 +1,4 @@
-//go:build windows
 // +build windows
-
-//go:generate goversioninfo -icon=../../assets/tiger.ico
 
 package main
 
@@ -14,7 +11,7 @@ import (
 	"github.com/kardianos/service"
 )
 
-func run(inputFilters, outputFilters []string) {
+func run(inputFilters, outputFilters, aggregatorFilters, processorFilters []string) {
 	// Register the eventlog logging target for windows.
 	logger.RegisterEventLogger(*fServiceName)
 
@@ -22,19 +19,25 @@ func run(inputFilters, outputFilters []string) {
 		runAsWindowsService(
 			inputFilters,
 			outputFilters,
+			aggregatorFilters,
+			processorFilters,
 		)
 	} else {
 		stop = make(chan struct{})
 		reloadLoop(
 			inputFilters,
 			outputFilters,
+			aggregatorFilters,
+			processorFilters,
 		)
 	}
 }
 
 type program struct {
-	inputFilters  []string
-	outputFilters []string
+	inputFilters      []string
+	outputFilters     []string
+	aggregatorFilters []string
+	processorFilters  []string
 }
 
 func (p *program) Start(s service.Service) error {
@@ -46,17 +49,16 @@ func (p *program) run() {
 	reloadLoop(
 		p.inputFilters,
 		p.outputFilters,
+		p.aggregatorFilters,
+		p.processorFilters,
 	)
-	close(stop)
 }
 func (p *program) Stop(s service.Service) error {
-	var empty struct{}
-	stop <- empty // signal reloadLoop to finish (context cancel)
-	<-stop        // wait for reloadLoop to finish and close channel
+	close(stop)
 	return nil
 }
 
-func runAsWindowsService(inputFilters, outputFilters []string) {
+func runAsWindowsService(inputFilters, outputFilters, aggregatorFilters, processorFilters []string) {
 	programFiles := os.Getenv("ProgramFiles")
 	if programFiles == "" { // Should never happen
 		programFiles = "C:\\Program Files"
@@ -70,8 +72,10 @@ func runAsWindowsService(inputFilters, outputFilters []string) {
 	}
 
 	prg := &program{
-		inputFilters:  inputFilters,
-		outputFilters: outputFilters,
+		inputFilters:      inputFilters,
+		outputFilters:     outputFilters,
+		aggregatorFilters: aggregatorFilters,
+		processorFilters:  processorFilters,
 	}
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
@@ -80,23 +84,14 @@ func runAsWindowsService(inputFilters, outputFilters []string) {
 	// Handle the --service flag here to prevent any issues with tooling that
 	// may not have an interactive session, e.g. installing from Ansible.
 	if *fService != "" {
-		if len(fConfigs) > 0 {
-			svcConfig.Arguments = []string{}
+		if *fConfig != "" {
+			svcConfig.Arguments = []string{"--config", *fConfig}
 		}
-		for _, fConfig := range fConfigs {
-			svcConfig.Arguments = append(svcConfig.Arguments, "--config", fConfig)
+		if *fConfigDirectory != "" {
+			svcConfig.Arguments = append(svcConfig.Arguments, "--config-directory", *fConfigDirectory)
 		}
-
-		for _, fConfigDirectory := range fConfigDirs {
-			svcConfig.Arguments = append(svcConfig.Arguments, "--config-directory", fConfigDirectory)
-		}
-
 		//set servicename to service cmd line, to have a custom name after relaunch as a service
 		svcConfig.Arguments = append(svcConfig.Arguments, "--service-name", *fServiceName)
-
-		if *fServiceAutoRestart {
-			svcConfig.Option = service.KeyValue{"OnFailure": "restart", "OnFailureDelayDuration": *fServiceRestartDelay}
-		}
 
 		err := service.Control(s, *fService)
 		if err != nil {

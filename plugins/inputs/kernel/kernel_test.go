@@ -1,20 +1,20 @@
-//go:build linux
 // +build linux
 
 package kernel
 
 import (
+	"io/ioutil"
 	"os"
 	"testing"
 
 	"github.com/influxdata/telegraf/testutil"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFullProcFile(t *testing.T) {
-	tmpfile := makeFakeStatFile(t, []byte(statFileFull))
-	tmpfile2 := makeFakeStatFile(t, []byte(entropyStatFileFull))
+	tmpfile := makeFakeStatFile([]byte(statFileFull))
+	tmpfile2 := makeFakeStatFile([]byte(entropyStatFileFull))
 	defer os.Remove(tmpfile)
 	defer os.Remove(tmpfile2)
 
@@ -24,7 +24,8 @@ func TestFullProcFile(t *testing.T) {
 	}
 
 	acc := testutil.Accumulator{}
-	require.NoError(t, k.Gather(&acc))
+	err := k.Gather(&acc)
+	assert.NoError(t, err)
 
 	fields := map[string]interface{}{
 		"boot_time":        int64(1457505775),
@@ -39,8 +40,8 @@ func TestFullProcFile(t *testing.T) {
 }
 
 func TestPartialProcFile(t *testing.T) {
-	tmpfile := makeFakeStatFile(t, []byte(statFilePartial))
-	tmpfile2 := makeFakeStatFile(t, []byte(entropyStatFilePartial))
+	tmpfile := makeFakeStatFile([]byte(statFilePartial))
+	tmpfile2 := makeFakeStatFile([]byte(entropyStatFilePartial))
 	defer os.Remove(tmpfile)
 	defer os.Remove(tmpfile2)
 
@@ -50,7 +51,8 @@ func TestPartialProcFile(t *testing.T) {
 	}
 
 	acc := testutil.Accumulator{}
-	require.NoError(t, k.Gather(&acc))
+	err := k.Gather(&acc)
+	assert.NoError(t, err)
 
 	fields := map[string]interface{}{
 		"boot_time":        int64(1457505775),
@@ -64,8 +66,8 @@ func TestPartialProcFile(t *testing.T) {
 }
 
 func TestInvalidProcFile1(t *testing.T) {
-	tmpfile := makeFakeStatFile(t, []byte(statFileInvalid))
-	tmpfile2 := makeFakeStatFile(t, []byte(entropyStatFileInvalid))
+	tmpfile := makeFakeStatFile([]byte(statFileInvalid))
+	tmpfile2 := makeFakeStatFile([]byte(entropyStatFileInvalid))
 	defer os.Remove(tmpfile)
 	defer os.Remove(tmpfile2)
 
@@ -76,12 +78,11 @@ func TestInvalidProcFile1(t *testing.T) {
 
 	acc := testutil.Accumulator{}
 	err := k.Gather(&acc)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid syntax")
+	assert.Error(t, err)
 }
 
 func TestInvalidProcFile2(t *testing.T) {
-	tmpfile := makeFakeStatFile(t, []byte(statFileInvalid2))
+	tmpfile := makeFakeStatFile([]byte(statFileInvalid2))
 	defer os.Remove(tmpfile)
 
 	k := Kernel{
@@ -90,13 +91,12 @@ func TestInvalidProcFile2(t *testing.T) {
 
 	acc := testutil.Accumulator{}
 	err := k.Gather(&acc)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "no such file")
+	assert.Error(t, err)
 }
 
 func TestNoProcFile(t *testing.T) {
-	tmpfile := makeFakeStatFile(t, []byte(statFileInvalid2))
-	require.NoError(t, os.Remove(tmpfile))
+	tmpfile := makeFakeStatFile([]byte(statFileInvalid2))
+	os.Remove(tmpfile)
 
 	k := Kernel{
 		statFile: tmpfile,
@@ -104,8 +104,8 @@ func TestNoProcFile(t *testing.T) {
 
 	acc := testutil.Accumulator{}
 	err := k.Gather(&acc)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "does not exist")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "does not exist")
 }
 
 const statFileFull = `cpu  6796 252 5655 10444977 175 0 101 0 0 0
@@ -167,14 +167,18 @@ const entropyStatFilePartial = `1024`
 
 const entropyStatFileInvalid = ``
 
-func makeFakeStatFile(t *testing.T, content []byte) string {
-	tmpfile, err := os.CreateTemp("", "kernel_test")
-	require.NoError(t, err)
+func makeFakeStatFile(content []byte) string {
+	tmpfile, err := ioutil.TempFile("", "kernel_test")
+	if err != nil {
+		panic(err)
+	}
 
-	_, err = tmpfile.Write(content)
-	require.NoError(t, err)
-
-	require.NoError(t, tmpfile.Close())
+	if _, err := tmpfile.Write(content); err != nil {
+		panic(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		panic(err)
+	}
 
 	return tmpfile.Name()
 }

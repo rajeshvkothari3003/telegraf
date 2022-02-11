@@ -1,10 +1,11 @@
-//go:build linux
 // +build linux
 
 package wireless
 
 import (
 	"bytes"
+	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"strconv"
@@ -45,12 +46,12 @@ func (w *Wireless) Gather(acc telegraf.Accumulator) error {
 	w.loadPath()
 
 	wirelessPath := path.Join(w.HostProc, "net", "wireless")
-	table, err := os.ReadFile(wirelessPath)
+	table, err := ioutil.ReadFile(wirelessPath)
 	if err != nil {
 		return err
 	}
 
-	interfaces, err := w.loadWirelessTable(table)
+	interfaces, err := loadWirelessTable(table)
 	if err != nil {
 		return err
 	}
@@ -79,8 +80,8 @@ func (w *Wireless) Gather(acc telegraf.Accumulator) error {
 	return nil
 }
 
-func (w *Wireless) loadWirelessTable(table []byte) ([]*wirelessInterface, error) {
-	var wi []*wirelessInterface
+func loadWirelessTable(table []byte) ([]*wirelessInterface, error) {
+	var w []*wirelessInterface
 	lines := bytes.Split(table, newLineByte)
 
 	// iterate over interfaces
@@ -98,10 +99,10 @@ func (w *Wireless) loadWirelessTable(table []byte) ([]*wirelessInterface, error)
 			values = append(values, v)
 		}
 		if len(values) != interfaceFieldLength {
-			w.Log.Error("invalid length of interface values")
+			log.Printf("E! [input.wireless] invalid length of interface values")
 			continue
 		}
-		wi = append(wi, &wirelessInterface{
+		w = append(w, &wirelessInterface{
 			Interface: strings.Trim(fields[0], ":"),
 			Status:    values[0],
 			Link:      values[1],
@@ -115,7 +116,7 @@ func (w *Wireless) loadWirelessTable(table []byte) ([]*wirelessInterface, error)
 			Beacon:    values[9],
 		})
 	}
-	return wi, nil
+	return w, nil
 }
 
 // loadPath can be used to read path firstly from config
@@ -127,13 +128,13 @@ func (w *Wireless) loadPath() {
 }
 
 // proc can be used to read file paths from env
-func proc(env, defaultPath string) string {
+func proc(env, path string) string {
 	// try to read full file path
 	if p := os.Getenv(env); p != "" {
 		return p
 	}
 	// return default path
-	return defaultPath
+	return path
 }
 
 func init() {

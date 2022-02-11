@@ -8,20 +8,18 @@ import (
 	"github.com/influxdata/telegraf"
 )
 
-type Serializer struct {
-	TimestampUnits  time.Duration
-	TimestampFormat string
+type serializer struct {
+	TimestampUnits time.Duration
 }
 
-func NewSerializer(timestampUnits time.Duration, timestampFormat string) (*Serializer, error) {
-	s := &Serializer{
-		TimestampUnits:  truncateDuration(timestampUnits),
-		TimestampFormat: timestampFormat,
+func NewSerializer(timestampUnits time.Duration) (*serializer, error) {
+	s := &serializer{
+		TimestampUnits: truncateDuration(timestampUnits),
 	}
 	return s, nil
 }
 
-func (s *Serializer) Serialize(metric telegraf.Metric) ([]byte, error) {
+func (s *serializer) Serialize(metric telegraf.Metric) ([]byte, error) {
 	m := s.createObject(metric)
 	serialized, err := json.Marshal(m)
 	if err != nil {
@@ -32,7 +30,7 @@ func (s *Serializer) Serialize(metric telegraf.Metric) ([]byte, error) {
 	return serialized, nil
 }
 
-func (s *Serializer) SerializeBatch(metrics []telegraf.Metric) ([]byte, error) {
+func (s *serializer) SerializeBatch(metrics []telegraf.Metric) ([]byte, error) {
 	objects := make([]interface{}, 0, len(metrics))
 	for _, metric := range metrics {
 		m := s.createObject(metric)
@@ -50,7 +48,7 @@ func (s *Serializer) SerializeBatch(metrics []telegraf.Metric) ([]byte, error) {
 	return serialized, nil
 }
 
-func (s *Serializer) createObject(metric telegraf.Metric) map[string]interface{} {
+func (s *serializer) createObject(metric telegraf.Metric) map[string]interface{} {
 	m := make(map[string]interface{}, 4)
 
 	tags := make(map[string]string, len(metric.TagList()))
@@ -61,7 +59,8 @@ func (s *Serializer) createObject(metric telegraf.Metric) map[string]interface{}
 
 	fields := make(map[string]interface{}, len(metric.FieldList()))
 	for _, field := range metric.FieldList() {
-		if fv, ok := field.Value.(float64); ok {
+		switch fv := field.Value.(type) {
+		case float64:
 			// JSON does not support these special values
 			if math.IsNaN(fv) || math.IsInf(fv, 0) {
 				continue
@@ -72,11 +71,7 @@ func (s *Serializer) createObject(metric telegraf.Metric) map[string]interface{}
 	m["fields"] = fields
 
 	m["name"] = metric.Name()
-	if s.TimestampFormat == "" {
-		m["timestamp"] = metric.Time().UnixNano() / int64(s.TimestampUnits)
-	} else {
-		m["timestamp"] = metric.Time().UTC().Format(s.TimestampFormat)
-	}
+	m["timestamp"] = metric.Time().UnixNano() / int64(s.TimestampUnits)
 	return m
 }
 

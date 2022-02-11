@@ -893,18 +893,6 @@ func TestParse(t *testing.T) {
 			expected: []telegraf.Metric{},
 		},
 		{
-			name:     "parse null",
-			config:   &Config{},
-			input:    []byte(`null`),
-			expected: []telegraf.Metric{},
-		},
-		{
-			name:     "parse null with query",
-			config:   &Config{Query: "result.data"},
-			input:    []byte(`{"error":null,"result":{"data":null,"items_per_page":10,"total_items":0,"total_pages":0}}`),
-			expected: []telegraf.Metric{},
-		},
-		{
 			name: "parse simple array",
 			config: &Config{
 				MetricName: "json",
@@ -1369,4 +1357,5 @@ func TestParseArrayWithWildcardTagKeys(t *testing.T) {
 			testutil.RequireMetricsEqual(t, tt.expected, actual, testutil.IgnoreTime())
 		})
 	}
+
 }

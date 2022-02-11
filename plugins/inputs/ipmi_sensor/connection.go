@@ -32,10 +32,8 @@ func NewConnection(server, privilege, hexKey string) *Connection {
 		security := server[0:inx1]
 		connstr = server[inx1+1:]
 		up := strings.SplitN(security, ":", 2)
-		if len(up) == 2 {
-			conn.Username = up[0]
-			conn.Password = up[1]
-		}
+		conn.Username = up[0]
+		conn.Password = up[1]
 	}
 
 	if inx2 > 0 {

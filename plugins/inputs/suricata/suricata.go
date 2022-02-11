@@ -25,7 +25,6 @@ const (
 type Suricata struct {
 	Source    string `toml:"source"`
 	Delimiter string `toml:"delimiter"`
-	Alerts    bool   `toml:"alerts"`
 
 	inputListener *net.UnixListener
 	cancel        context.CancelFunc
@@ -37,11 +36,11 @@ type Suricata struct {
 
 // Description returns the plugin description.
 func (s *Suricata) Description() string {
-	return "Suricata stats and alerts plugin"
+	return "Suricata stats plugin"
 }
 
 const sampleConfig = `
-  ## Data sink for Suricata stats and alerts logs
+  ## Data sink for Suricata stats log
   # This is expected to be a filename of a
   # unix socket to be created for listening.
   source = "/var/run/suricata-stats.sock"
@@ -49,9 +48,6 @@ const sampleConfig = `
   # Delimiter for flattening field keys, e.g. subitem "alert" of "detect"
   # becomes "detect_alert" when delimiter is "_".
   delimiter = "_"
-  
-  ## Detect alert logs 
-  # alerts = false 
 `
 
 // SampleConfig returns a sample TOML section to illustrate configuration
@@ -85,8 +81,6 @@ func (s *Suricata) Start(acc telegraf.Accumulator) error {
 // Stop causes the plugin to cease collecting JSON data from the socket provided
 // to Suricata.
 func (s *Suricata) Stop() {
-	// Ignore the returned error as we cannot do anything about it anyway
-	//nolint:errcheck,revive
 	s.inputListener.Close()
 	if s.cancel != nil {
 		s.cancel()
@@ -104,12 +98,8 @@ func (s *Suricata) readInput(ctx context.Context, acc telegraf.Accumulator, conn
 			line, rerr := reader.ReadBytes('\n')
 			if rerr != nil {
 				return rerr
-			}
-			if len(line) > 0 {
-				err := s.parse(acc, line)
-				if err != nil {
-					acc.AddError(err)
-				}
+			} else if len(line) > 0 {
+				s.parse(acc, line)
 			}
 		}
 	}
@@ -156,45 +146,29 @@ func flexFlatten(outmap map[string]interface{}, field string, v interface{}, del
 				return err
 			}
 		}
-	case []interface{}:
-		for _, v := range t {
-			err := flexFlatten(outmap, field, v, delimiter)
-			if err != nil {
-				return err
-			}
-		}
-	case string:
-		outmap[field] = v
 	case float64:
-		outmap[field] = t
+		outmap[field] = v.(float64)
 	default:
-		return fmt.Errorf("unsupported type %T encountered", t)
+		return fmt.Errorf("Unsupported type %T encountered", t)
 	}
 	return nil
 }
 
-func (s *Suricata) parseAlert(acc telegraf.Accumulator, result map[string]interface{}) {
-	if _, ok := result["alert"].(map[string]interface{}); !ok {
-		s.Log.Debug("'alert' sub-object does not have required structure")
+func (s *Suricata) parse(acc telegraf.Accumulator, sjson []byte) {
+	// initial parsing
+	var result map[string]interface{}
+	err := json.Unmarshal([]byte(sjson), &result)
+	if err != nil {
+		acc.AddError(err)
 		return
 	}
 
-	totalmap := make(map[string]interface{})
-	for k, v := range result["alert"].(map[string]interface{}) {
-		//source and target fields are maps
-		err := flexFlatten(totalmap, k, v, s.Delimiter)
-		if err != nil {
-			s.Log.Debugf("Flattening alert failed: %v", err)
-			// we skip this subitem as something did not parse correctly
-			continue
-		}
+	// check for presence of relevant stats
+	if _, ok := result["stats"]; !ok {
+		s.Log.Debug("Input does not contain necessary 'stats' sub-object")
+		return
 	}
 
-	//threads field do not exist in alert output, always global
-	acc.AddFields("suricata_alert", totalmap, nil)
-}
-
-func (s *Suricata) parseStats(acc telegraf.Accumulator, result map[string]interface{}) {
 	if _, ok := result["stats"].(map[string]interface{}); !ok {
 		s.Log.Debug("The 'stats' sub-object does not have required structure")
 		return
@@ -208,9 +182,9 @@ func (s *Suricata) parseStats(acc telegraf.Accumulator, result map[string]interf
 				for k, t := range v {
 					outmap := make(map[string]interface{})
 					if threadStruct, ok := t.(map[string]interface{}); ok {
-						err := flexFlatten(outmap, "", threadStruct, s.Delimiter)
+						err = flexFlatten(outmap, "", threadStruct, s.Delimiter)
 						if err != nil {
-							s.Log.Debugf("Flattening alert failed: %v", err)
+							s.Log.Debug(err)
 							// we skip this thread as something did not parse correctly
 							continue
 						}
@@ -221,11 +195,10 @@ func (s *Suricata) parseStats(acc telegraf.Accumulator, result map[string]interf
 				s.Log.Debug("The 'threads' sub-object does not have required structure")
 			}
 		} else {
-			err := flexFlatten(totalmap, k, v, s.Delimiter)
+			err = flexFlatten(totalmap, k, v, s.Delimiter)
 			if err != nil {
-				s.Log.Debugf("Flattening alert failed: %v", err)
+				s.Log.Debug(err.Error())
 				// we skip this subitem as something did not parse correctly
-				continue
 			}
 		}
 	}
@@ -240,31 +213,9 @@ func (s *Suricata) parseStats(acc telegraf.Accumulator, result map[string]interf
 	}
 }
 
-func (s *Suricata) parse(acc telegraf.Accumulator, sjson []byte) error {
-	// initial parsing
-	var result map[string]interface{}
-	err := json.Unmarshal(sjson, &result)
-	if err != nil {
-		return err
-	}
-	// check for presence of relevant stats or alert
-	_, ok := result["stats"]
-	_, ok2 := result["alert"]
-	if !ok && !ok2 {
-		s.Log.Debugf("Invalid input without 'stats' or 'alert' object: %v", result)
-		return fmt.Errorf("input does not contain 'stats' or 'alert' object")
-	}
-	if ok {
-		s.parseStats(acc, result)
-	} else if ok2 && s.Alerts {
-		s.parseAlert(acc, result)
-	}
-	return nil
-}
-
 // Gather measures and submits one full set of telemetry to Telegraf.
 // Not used here, submission is completely input-driven.
-func (s *Suricata) Gather(_ telegraf.Accumulator) error {
+func (s *Suricata) Gather(acc telegraf.Accumulator) error {
 	return nil
 }
 

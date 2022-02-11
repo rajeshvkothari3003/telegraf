@@ -3,6 +3,8 @@ package sumologic
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -26,7 +28,7 @@ const (
 
   ## Data format to be used for sending metrics.
   ## This will set the "Content-Type" header accordingly.
-  ## Currently supported formats:
+  ## Currently supported formats: 
   ## * graphite - for Content-Type of application/vnd.sumologic.graphite
   ## * carbon2 - for Content-Type of application/vnd.sumologic.carbon2
   ## * prometheus - for Content-Type of application/vnd.sumologic.prometheus
@@ -41,7 +43,7 @@ const (
 
   ## Timeout used for HTTP request
   # timeout = "5s"
-
+  
   ## Max HTTP request body size in bytes before compression (if applied).
   ## By default 1MB is recommended.
   ## NOTE:
@@ -91,9 +93,9 @@ const (
 )
 
 type SumoLogic struct {
-	URL               string          `toml:"url"`
-	Timeout           config.Duration `toml:"timeout"`
-	MaxRequstBodySize config.Size     `toml:"max_request_body_size"`
+	URL               string            `toml:"url"`
+	Timeout           internal.Duration `toml:"timeout"`
+	MaxRequstBodySize config.Size       `toml:"max_request_body_size"`
 
 	SourceName     string `toml:"source_name"`
 	SourceHost     string `toml:"source_host"`
@@ -137,13 +139,13 @@ func (s *SumoLogic) SetSerializer(serializer serializers.Serializer) {
 	s.serializer = serializer
 }
 
-func (s *SumoLogic) createClient() *http.Client {
+func (s *SumoLogic) createClient(ctx context.Context) (*http.Client, error) {
 	return &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 		},
-		Timeout: time.Duration(s.Timeout),
-	}
+		Timeout: s.Timeout.Duration,
+	}, nil
 }
 
 func (s *SumoLogic) Connect() error {
@@ -151,11 +153,16 @@ func (s *SumoLogic) Connect() error {
 		return errors.Wrap(s.err, "sumologic: incorrect configuration")
 	}
 
-	if s.Timeout == 0 {
-		s.Timeout = config.Duration(defaultClientTimeout)
+	if s.Timeout.Duration == 0 {
+		s.Timeout.Duration = defaultClientTimeout
 	}
 
-	s.client = s.createClient()
+	client, err := s.createClient(context.Background())
+	if err != nil {
+		return err
+	}
+
+	s.client = client
 
 	return nil
 }
@@ -197,19 +204,19 @@ func (s *SumoLogic) Write(metrics []telegraf.Metric) error {
 		return s.writeRequestChunks(chunks)
 	}
 
-	return s.writeRequestChunk(reqBody)
+	return s.write(reqBody)
 }
 
 func (s *SumoLogic) writeRequestChunks(chunks [][]byte) error {
 	for _, reqChunk := range chunks {
-		if err := s.writeRequestChunk(reqChunk); err != nil {
+		if err := s.write(reqChunk); err != nil {
 			s.Log.Errorf("Error sending chunk: %v", err)
 		}
 	}
 	return nil
 }
 
-func (s *SumoLogic) writeRequestChunk(reqBody []byte) error {
+func (s *SumoLogic) write(reqBody []byte) error {
 	var (
 		err  error
 		buff bytes.Buffer
@@ -283,31 +290,31 @@ func (s *SumoLogic) splitIntoChunks(metrics []telegraf.Metric) ([][]byte, error)
 				if la+len(chunkBody) > int(s.MaxRequstBodySize) {
 					// ... and it's just the right size, without currently processed chunk.
 					break
+				} else {
+					// ... we can try appending more.
+					i++
+					toAppend = append(toAppend, chunkBody...)
+					continue
 				}
-				// ... we can try appending more.
+			} else { // la == 0
 				i++
-				toAppend = append(toAppend, chunkBody...)
+				toAppend = chunkBody
+
+				if len(chunkBody) > int(s.MaxRequstBodySize) {
+					log.Printf(
+						"W! [SumoLogic] max_request_body_size set to %d which is too small even for a single metric (len: %d), sending without split",
+						s.MaxRequstBodySize, len(chunkBody),
+					)
+
+					// The serialized metric is too big but we have no choice
+					// but to send it.
+					// max_request_body_size was set so small that it wouldn't
+					// even accomodate a single metric.
+					break
+				}
+
 				continue
 			}
-
-			// la == 0
-			i++
-			toAppend = chunkBody
-
-			if len(chunkBody) > int(s.MaxRequstBodySize) {
-				s.Log.Warnf(
-					"max_request_body_size set to %d which is too small even for a single metric (len: %d), sending without split",
-					s.MaxRequstBodySize, len(chunkBody),
-				)
-
-				// The serialized metric is too big, but we have no choice
-				// but to send it.
-				// max_request_body_size was set so small that it wouldn't
-				// even accommodate a single metric.
-				break
-			}
-
-			continue
 		}
 
 		if toAppend == nil {
@@ -328,7 +335,9 @@ func setHeaderIfSetInConfig(r *http.Request, h header, value string) {
 
 func Default() *SumoLogic {
 	return &SumoLogic{
-		Timeout:           config.Duration(defaultClientTimeout),
+		Timeout: internal.Duration{
+			Duration: defaultClientTimeout,
+		},
 		MaxRequstBodySize: defaultMaxRequestBodySize,
 		headers:           make(map[string]string),
 	}

@@ -8,9 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf"
+	"github.com/stretchr/testify/require"
 )
 
 func TestShimSetsUpLogger(t *testing.T) {
@@ -19,8 +18,7 @@ func TestShimSetsUpLogger(t *testing.T) {
 
 	runErroringInputPlugin(t, 40*time.Second, stdinReader, nil, stderrWriter)
 
-	_, err := stdinWriter.Write([]byte("\n"))
-	require.NoError(t, err)
+	stdinWriter.Write([]byte("\n"))
 
 	// <-metricProcessed
 
@@ -29,8 +27,7 @@ func TestShimSetsUpLogger(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, "Error in plugin: intentional")
 
-	err = stdinWriter.Close()
-	require.NoError(t, err)
+	stdinWriter.Close()
 }
 
 func runErroringInputPlugin(t *testing.T, interval time.Duration, stdin io.Reader, stdout, stderr io.Writer) (metricProcessed chan bool, exited chan bool) {
@@ -49,8 +46,7 @@ func runErroringInputPlugin(t *testing.T, interval time.Duration, stdin io.Reade
 		shim.stderr = stderr
 		log.SetOutput(stderr)
 	}
-	err := shim.AddInput(inp)
-	require.NoError(t, err)
+	shim.AddInput(inp)
 	go func() {
 		err := shim.Run(interval)
 		require.NoError(t, err)
@@ -75,7 +71,7 @@ func (i *erroringInput) Gather(acc telegraf.Accumulator) error {
 	return nil
 }
 
-func (i *erroringInput) Start(_ telegraf.Accumulator) error {
+func (i *erroringInput) Start(acc telegraf.Accumulator) error {
 	return nil
 }
 

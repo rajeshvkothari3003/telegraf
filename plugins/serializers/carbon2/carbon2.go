@@ -2,7 +2,6 @@ package carbon2
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -24,23 +23,11 @@ var formats = map[format]struct{}{
 	Carbon2FormatMetricIncludesField: {},
 }
 
-const (
-	DefaultSanitizeReplaceChar = ":"
-	sanitizedChars             = "!@#$%^&*()+`'\"[]{};<>,?/\\|="
-)
-
 type Serializer struct {
-	metricsFormat    format
-	sanitizeReplacer *strings.Replacer
+	metricsFormat format
 }
 
-func NewSerializer(metricsFormat string, sanitizeReplaceChar string) (*Serializer, error) {
-	if sanitizeReplaceChar == "" {
-		sanitizeReplaceChar = DefaultSanitizeReplaceChar
-	} else if len(sanitizeReplaceChar) > 1 {
-		return nil, errors.New("sanitize replace char has to be a singular character")
-	}
-
+func NewSerializer(metricsFormat string) (*Serializer, error) {
 	var f = format(metricsFormat)
 
 	if _, ok := formats[f]; !ok {
@@ -53,8 +40,7 @@ func NewSerializer(metricsFormat string, sanitizeReplaceChar string) (*Serialize
 	}
 
 	return &Serializer{
-		metricsFormat:    f,
-		sanitizeReplacer: createSanitizeReplacer(sanitizedChars, rune(sanitizeReplaceChar[0])),
+		metricsFormat: f,
 	}, nil
 }
 
@@ -65,7 +51,7 @@ func (s *Serializer) Serialize(metric telegraf.Metric) ([]byte, error) {
 func (s *Serializer) SerializeBatch(metrics []telegraf.Metric) ([]byte, error) {
 	var batch bytes.Buffer
 	for _, metric := range metrics {
-		batch.Write(s.createObject(metric)) //nolint:revive // from buffer.go: "err is always nil"
+		batch.Write(s.createObject(metric))
 	}
 	return batch.Bytes(), nil
 }
@@ -79,31 +65,33 @@ func (s *Serializer) createObject(metric telegraf.Metric) []byte {
 			continue
 		}
 
-		name := s.sanitizeReplacer.Replace(metric.Name())
-
 		switch metricsFormat {
 		case Carbon2FormatFieldSeparate:
-			m.WriteString(serializeMetricFieldSeparate(name, fieldName)) //nolint:revive // from buffer.go: "err is always nil"
+			m.WriteString(serializeMetricFieldSeparate(
+				metric.Name(), fieldName,
+			))
 
 		case Carbon2FormatMetricIncludesField:
-			m.WriteString(serializeMetricIncludeField(name, fieldName)) //nolint:revive // from buffer.go: "err is always nil"
+			m.WriteString(serializeMetricIncludeField(
+				metric.Name(), fieldName,
+			))
 		}
 
 		for _, tag := range metric.TagList() {
-			m.WriteString(strings.Replace(tag.Key, " ", "_", -1)) //nolint:revive // from buffer.go: "err is always nil"
-			m.WriteString("=")                                    //nolint:revive // from buffer.go: "err is always nil"
+			m.WriteString(strings.Replace(tag.Key, " ", "_", -1))
+			m.WriteString("=")
 			value := tag.Value
 			if len(value) == 0 {
 				value = "null"
 			}
-			m.WriteString(strings.Replace(value, " ", "_", -1)) //nolint:revive // from buffer.go: "err is always nil"
-			m.WriteString(" ")                                  //nolint:revive // from buffer.go: "err is always nil"
+			m.WriteString(strings.Replace(value, " ", "_", -1))
+			m.WriteString(" ")
 		}
-		m.WriteString(" ")                                         //nolint:revive // from buffer.go: "err is always nil"
-		m.WriteString(formatValue(fieldValue))                     //nolint:revive // from buffer.go: "err is always nil"
-		m.WriteString(" ")                                         //nolint:revive // from buffer.go: "err is always nil"
-		m.WriteString(strconv.FormatInt(metric.Time().Unix(), 10)) //nolint:revive // from buffer.go: "err is always nil"
-		m.WriteString("\n")                                        //nolint:revive // from buffer.go: "err is always nil"
+		m.WriteString(" ")
+		m.WriteString(formatValue(fieldValue))
+		m.WriteString(" ")
+		m.WriteString(strconv.FormatInt(metric.Time().Unix(), 10))
+		m.WriteString("\n")
 	}
 	return m.Bytes()
 }
@@ -163,14 +151,4 @@ func bool2int(b bool) int {
 		i = 0
 	}
 	return i
-}
-
-// createSanitizeReplacer creates string replacer replacing all provided
-// characters with the replaceChar.
-func createSanitizeReplacer(sanitizedChars string, replaceChar rune) *strings.Replacer {
-	sanitizeCharPairs := make([]string, 0, 2*len(sanitizedChars))
-	for _, c := range sanitizedChars {
-		sanitizeCharPairs = append(sanitizeCharPairs, string(c), string(replaceChar))
-	}
-	return strings.NewReplacer(sanitizeCharPairs...)
 }

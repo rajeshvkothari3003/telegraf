@@ -3,16 +3,15 @@ package syslog
 import (
 	"crypto/tls"
 	"fmt"
+	"log"
 	"net"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/influxdata/go-syslog/v3/nontransparent"
-	"github.com/influxdata/go-syslog/v3/rfc5424"
-
+	"github.com/influxdata/go-syslog/v2/nontransparent"
+	"github.com/influxdata/go-syslog/v2/rfc5424"
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	framing "github.com/influxdata/telegraf/internal/syslog"
 	tlsint "github.com/influxdata/telegraf/plugins/common/tls"
 	"github.com/influxdata/telegraf/plugins/outputs"
@@ -20,7 +19,7 @@ import (
 
 type Syslog struct {
 	Address             string
-	KeepAlivePeriod     *config.Duration
+	KeepAlivePeriod     *internal.Duration
 	DefaultSdid         string
 	DefaultSeverityCode uint8
 	DefaultFacilityCode uint8
@@ -29,7 +28,6 @@ type Syslog struct {
 	Separator           string `toml:"sdparam_separator"`
 	Framing             framing.Framing
 	Trailer             nontransparent.TrailerType
-	Log                 telegraf.Logger `toml:"-"`
 	net.Conn
 	tlsint.ClientConfig
 	mapper *SyslogMapper
@@ -136,7 +134,7 @@ func (s *Syslog) Connect() error {
 	}
 
 	if err := s.setKeepAlive(c); err != nil {
-		s.Log.Warnf("unable to configure keep alive (%s): %s", s.Address, err)
+		log.Printf("unable to configure keep alive (%s): %s", s.Address, err)
 	}
 
 	s.Conn = c
@@ -151,13 +149,13 @@ func (s *Syslog) setKeepAlive(c net.Conn) error {
 	if !ok {
 		return fmt.Errorf("cannot set keep alive on a %s socket", strings.SplitN(s.Address, "://", 2)[0])
 	}
-	if *s.KeepAlivePeriod == 0 {
+	if s.KeepAlivePeriod.Duration == 0 {
 		return tcpc.SetKeepAlive(false)
 	}
 	if err := tcpc.SetKeepAlive(true); err != nil {
 		return err
 	}
-	return tcpc.SetKeepAlivePeriod(time.Duration(*s.KeepAlivePeriod))
+	return tcpc.SetKeepAlivePeriod(s.KeepAlivePeriod.Duration)
 }
 
 func (s *Syslog) Close() error {
@@ -187,17 +185,17 @@ func (s *Syslog) Write(metrics []telegraf.Metric) (err error) {
 	for _, metric := range metrics {
 		var msg *rfc5424.SyslogMessage
 		if msg, err = s.mapper.MapMetricToSyslogMessage(metric); err != nil {
-			s.Log.Errorf("Failed to create syslog message: %v", err)
+			log.Printf("E! [outputs.syslog] Failed to create syslog message: %v", err)
 			continue
 		}
 		var msgBytesWithFraming []byte
 		if msgBytesWithFraming, err = s.getSyslogMessageBytesWithFraming(msg); err != nil {
-			s.Log.Errorf("Failed to convert syslog message with framing: %v", err)
+			log.Printf("E! [outputs.syslog] Failed to convert syslog message with framing: %v", err)
 			continue
 		}
 		if _, err = s.Conn.Write(msgBytesWithFraming); err != nil {
 			if netErr, ok := err.(net.Error); !ok || !netErr.Temporary() {
-				s.Close() //nolint:revive // There is another error which will be returned here
+				s.Close()
 				s.Conn = nil
 				return fmt.Errorf("closing connection: %v", netErr)
 			}
@@ -219,11 +217,7 @@ func (s *Syslog) getSyslogMessageBytesWithFraming(msg *rfc5424.SyslogMessage) ([
 		return append([]byte(strconv.Itoa(len(msgBytes))+" "), msgBytes...), nil
 	}
 	// Non-transparent framing
-	trailer, err := s.Trailer.Value()
-	if err != nil {
-		return nil, err
-	}
-	return append(msgBytes, byte(trailer)), nil
+	return append(msgBytes, byte(s.Trailer)), nil
 }
 
 func (s *Syslog) initializeSyslogMapper() {

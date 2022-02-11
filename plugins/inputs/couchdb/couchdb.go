@@ -125,9 +125,9 @@ func (c *CouchDB) fetchAndInsertData(accumulator telegraf.Accumulator, host stri
 	if c.client == nil {
 		c.client = &http.Client{
 			Transport: &http.Transport{
-				ResponseHeaderTimeout: 3 * time.Second,
+				ResponseHeaderTimeout: time.Duration(3 * time.Second),
 			},
-			Timeout: 4 * time.Second,
+			Timeout: time.Duration(4 * time.Second),
 		}
 	}
 
@@ -140,21 +140,19 @@ func (c *CouchDB) fetchAndInsertData(accumulator telegraf.Accumulator, host stri
 		req.SetBasicAuth(c.BasicUsername, c.BasicPassword)
 	}
 
-	response, err := c.client.Do(req)
-	if err != nil {
-		return err
+	response, error := c.client.Do(req)
+	if error != nil {
+		return error
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != 200 {
-		return fmt.Errorf("failed to get stats from couchdb: HTTP responded %d", response.StatusCode)
+		return fmt.Errorf("Failed to get stats from couchdb: HTTP responded %d", response.StatusCode)
 	}
 
 	stats := Stats{}
 	decoder := json.NewDecoder(response.Body)
-	if err := decoder.Decode(&stats); err != nil {
-		return fmt.Errorf("failed to decode stats from couchdb: HTTP body %q", response.Body)
-	}
+	decoder.Decode(&stats)
 
 	fields := map[string]interface{}{}
 
@@ -289,9 +287,9 @@ func init() {
 		return &CouchDB{
 			client: &http.Client{
 				Transport: &http.Transport{
-					ResponseHeaderTimeout: 3 * time.Second,
+					ResponseHeaderTimeout: time.Duration(3 * time.Second),
 				},
-				Timeout: 4 * time.Second,
+				Timeout: time.Duration(4 * time.Second),
 			},
 		}
 	})

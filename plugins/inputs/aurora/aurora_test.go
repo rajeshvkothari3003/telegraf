@@ -46,8 +46,7 @@ func TestAurora(t *testing.T) {
 					"variable_scrape_micros_total_per_sec": 1485.0
 				}`
 				w.WriteHeader(http.StatusOK)
-				_, err := w.Write([]byte(body))
-				require.NoError(t, err)
+				w.Write([]byte(body))
 			},
 			check: func(t *testing.T, err error, acc *testutil.Accumulator) {
 				require.NoError(t, err)
@@ -87,8 +86,7 @@ func TestAurora(t *testing.T) {
 			},
 			varsjson: func(t *testing.T, w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				_, err := w.Write([]byte("{}"))
-				require.NoError(t, err)
+				w.Write([]byte("{}"))
 			},
 			check: func(t *testing.T, err error, acc *testutil.Accumulator) {
 				require.NoError(t, err)
@@ -106,8 +104,7 @@ func TestAurora(t *testing.T) {
 					"foo": "bar"
 				}`
 				w.WriteHeader(http.StatusOK)
-				_, err := w.Write([]byte(body))
-				require.NoError(t, err)
+				w.Write([]byte(body))
 			},
 			check: func(t *testing.T, err error, acc *testutil.Accumulator) {
 				require.NoError(t, err)
@@ -126,8 +123,7 @@ func TestAurora(t *testing.T) {
 					"foo": 1e309
 				}`
 				w.WriteHeader(http.StatusOK)
-				_, err := w.Write([]byte(body))
-				require.NoError(t, err)
+				w.Write([]byte(body))
 			},
 			check: func(t *testing.T, err error, acc *testutil.Accumulator) {
 				require.NoError(t, err)
@@ -146,8 +142,7 @@ func TestAurora(t *testing.T) {
 					"foo": 9223372036854775808
 				}`
 				w.WriteHeader(http.StatusOK)
-				_, err := w.Write([]byte(body))
-				require.NoError(t, err)
+				w.Write([]byte(body))
 			},
 			check: func(t *testing.T, err error, acc *testutil.Accumulator) {
 				require.NoError(t, err)
@@ -163,8 +158,7 @@ func TestAurora(t *testing.T) {
 			varsjson: func(t *testing.T, w http.ResponseWriter, r *http.Request) {
 				body := `{]`
 				w.WriteHeader(http.StatusOK)
-				_, err := w.Write([]byte(body))
-				require.NoError(t, err)
+				w.Write([]byte(body))
 			},
 			check: func(t *testing.T, err error, acc *testutil.Accumulator) {
 				require.NoError(t, err)
@@ -182,8 +176,7 @@ func TestAurora(t *testing.T) {
 					"value": 42
 				}`
 				w.WriteHeader(http.StatusServiceUnavailable)
-				_, err := w.Write([]byte(body))
-				require.NoError(t, err)
+				w.Write([]byte(body))
 			},
 			check: func(t *testing.T, err error, acc *testutil.Accumulator) {
 				require.NoError(t, err)
@@ -251,8 +244,7 @@ func TestBasicAuth(t *testing.T) {
 				require.Equal(t, tt.username, username)
 				require.Equal(t, tt.password, password)
 				w.WriteHeader(http.StatusOK)
-				_, err := w.Write([]byte("{}"))
-				require.NoError(t, err)
+				w.Write([]byte("{}"))
 			})
 
 			var acc testutil.Accumulator

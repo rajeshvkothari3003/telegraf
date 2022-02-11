@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strings"
@@ -15,9 +15,8 @@ import (
 
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
-
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
+	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/metric"
 	"github.com/influxdata/telegraf/plugins/outputs"
 	"github.com/influxdata/telegraf/selfstat"
@@ -26,7 +25,7 @@ import (
 // AzureMonitor allows publishing of metrics to the Azure Monitor custom metrics
 // service
 type AzureMonitor struct {
-	Timeout             config.Duration
+	Timeout             internal.Duration
 	NamespacePrefix     string          `toml:"namespace_prefix"`
 	StringsAsDimensions bool            `toml:"strings_as_dimensions"`
 	Region              string          `toml:"region"`
@@ -145,15 +144,15 @@ func (a *AzureMonitor) SampleConfig() string {
 func (a *AzureMonitor) Connect() error {
 	a.cache = make(map[time.Time]map[uint64]*aggregate, 36)
 
-	if a.Timeout == 0 {
-		a.Timeout = config.Duration(defaultRequestTimeout)
+	if a.Timeout.Duration == 0 {
+		a.Timeout.Duration = defaultRequestTimeout
 	}
 
 	a.client = &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 		},
-		Timeout: time.Duration(a.Timeout),
+		Timeout: a.Timeout.Duration,
 	}
 
 	var err error
@@ -194,7 +193,7 @@ func (a *AzureMonitor) Connect() error {
 
 	a.auth, err = auth.NewAuthorizerFromEnvironmentWithResource(defaultAuthResource)
 	if err != nil {
-		return err
+		return nil
 	}
 
 	a.Reset()
@@ -209,7 +208,7 @@ func (a *AzureMonitor) Connect() error {
 }
 
 // vmMetadata retrieves metadata about the current Azure VM
-func vmInstanceMetadata(c *http.Client) (region string, resourceID string, err error) {
+func vmInstanceMetadata(c *http.Client) (string, string, error) {
 	req, err := http.NewRequest("GET", vmInstanceMetadataURL, nil)
 	if err != nil {
 		return "", "", fmt.Errorf("error creating request: %v", err)
@@ -222,7 +221,7 @@ func vmInstanceMetadata(c *http.Client) (region string, resourceID string, err e
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", "", err
 	}
@@ -236,8 +235,8 @@ func vmInstanceMetadata(c *http.Client) (region string, resourceID string, err e
 		return "", "", err
 	}
 
-	region = metadata.Compute.Location
-	resourceID = metadata.ResourceID()
+	region := metadata.Compute.Location
+	resourceID := metadata.ResourceID()
 
 	return region, resourceID, nil
 }
@@ -357,7 +356,7 @@ func (a *AzureMonitor) send(body []byte) error {
 	}
 	defer resp.Body.Close()
 
-	_, err = io.ReadAll(resp.Body)
+	_, err = ioutil.ReadAll(resp.Body)
 	if err != nil || resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("failed to write batch: [%v] %s", resp.StatusCode, resp.Status)
 	}
@@ -367,20 +366,20 @@ func (a *AzureMonitor) send(body []byte) error {
 
 func hashIDWithTagKeysOnly(m telegraf.Metric) uint64 {
 	h := fnv.New64a()
-	h.Write([]byte(m.Name())) //nolint:revive // from hash.go: "It never returns an error"
-	h.Write([]byte("\n"))     //nolint:revive // from hash.go: "It never returns an error"
+	h.Write([]byte(m.Name()))
+	h.Write([]byte("\n"))
 	for _, tag := range m.TagList() {
 		if tag.Key == "" || tag.Value == "" {
 			continue
 		}
 
-		h.Write([]byte(tag.Key)) //nolint:revive // from hash.go: "It never returns an error"
-		h.Write([]byte("\n"))    //nolint:revive // from hash.go: "It never returns an error"
+		h.Write([]byte(tag.Key))
+		h.Write([]byte("\n"))
 	}
 	b := make([]byte, binary.MaxVarintLen64)
 	n := binary.PutUvarint(b, uint64(m.Time().UnixNano()))
-	h.Write(b[:n])        //nolint:revive // from hash.go: "It never returns an error"
-	h.Write([]byte("\n")) //nolint:revive // from hash.go: "It never returns an error"
+	h.Write(b[:n])
+	h.Write([]byte("\n"))
 	return h.Sum64()
 }
 
@@ -574,10 +573,10 @@ func hashIDWithField(id uint64, fk string) uint64 {
 	h := fnv.New64a()
 	b := make([]byte, binary.MaxVarintLen64)
 	n := binary.PutUvarint(b, id)
-	h.Write(b[:n])        //nolint:revive // from hash.go: "It never returns an error"
-	h.Write([]byte("\n")) //nolint:revive // from hash.go: "It never returns an error"
-	h.Write([]byte(fk))   //nolint:revive // from hash.go: "It never returns an error"
-	h.Write([]byte("\n")) //nolint:revive // from hash.go: "It never returns an error"
+	h.Write(b[:n])
+	h.Write([]byte("\n"))
+	h.Write([]byte(fk))
+	h.Write([]byte("\n"))
 	return h.Sum64()
 }
 
@@ -600,7 +599,7 @@ func (a *AzureMonitor) Push() []telegraf.Metric {
 				tags[tag.name] = tag.value
 			}
 
-			m := metric.New(agg.name,
+			m, err := metric.New(agg.name,
 				tags,
 				map[string]interface{}{
 					"min":   agg.min,
@@ -610,6 +609,10 @@ func (a *AzureMonitor) Push() []telegraf.Metric {
 				},
 				tbucket,
 			)
+
+			if err != nil {
+				a.Log.Errorf("Could not create metric for aggregation %q; discarding point", agg.name)
+			}
 
 			metrics = append(metrics, m)
 		}

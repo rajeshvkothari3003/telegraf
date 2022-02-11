@@ -1,4 +1,3 @@
-//go:build linux
 // +build linux
 
 package kernel
@@ -6,6 +5,7 @@ package kernel
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -35,12 +35,13 @@ func (k *Kernel) Description() string {
 func (k *Kernel) SampleConfig() string { return "" }
 
 func (k *Kernel) Gather(acc telegraf.Accumulator) error {
+
 	data, err := k.getProcStat()
 	if err != nil {
 		return err
 	}
 
-	entropyData, err := os.ReadFile(k.entropyStatFile)
+	entropyData, err := ioutil.ReadFile(k.entropyStatFile)
 	if err != nil {
 		return err
 	}
@@ -53,7 +54,7 @@ func (k *Kernel) Gather(acc telegraf.Accumulator) error {
 
 	fields := make(map[string]interface{})
 
-	fields["entropy_avail"] = entropyValue
+	fields["entropy_avail"] = int64(entropyValue)
 
 	dataFields := bytes.Fields(data)
 	for i, field := range dataFields {
@@ -63,25 +64,25 @@ func (k *Kernel) Gather(acc telegraf.Accumulator) error {
 			if err != nil {
 				return err
 			}
-			fields["interrupts"] = m
+			fields["interrupts"] = int64(m)
 		case bytes.Equal(field, contextSwitches):
 			m, err := strconv.ParseInt(string(dataFields[i+1]), 10, 64)
 			if err != nil {
 				return err
 			}
-			fields["context_switches"] = m
+			fields["context_switches"] = int64(m)
 		case bytes.Equal(field, processesForked):
 			m, err := strconv.ParseInt(string(dataFields[i+1]), 10, 64)
 			if err != nil {
 				return err
 			}
-			fields["processes_forked"] = m
+			fields["processes_forked"] = int64(m)
 		case bytes.Equal(field, bootTime):
 			m, err := strconv.ParseInt(string(dataFields[i+1]), 10, 64)
 			if err != nil {
 				return err
 			}
-			fields["boot_time"] = m
+			fields["boot_time"] = int64(m)
 		case bytes.Equal(field, diskPages):
 			in, err := strconv.ParseInt(string(dataFields[i+1]), 10, 64)
 			if err != nil {
@@ -91,8 +92,8 @@ func (k *Kernel) Gather(acc telegraf.Accumulator) error {
 			if err != nil {
 				return err
 			}
-			fields["disk_pages_in"] = in
-			fields["disk_pages_out"] = out
+			fields["disk_pages_in"] = int64(in)
+			fields["disk_pages_out"] = int64(out)
 		}
 	}
 
@@ -108,7 +109,7 @@ func (k *Kernel) getProcStat() ([]byte, error) {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(k.statFile)
+	data, err := ioutil.ReadFile(k.statFile)
 	if err != nil {
 		return nil, err
 	}

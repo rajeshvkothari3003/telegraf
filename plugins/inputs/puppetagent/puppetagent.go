@@ -2,11 +2,11 @@ package puppetagent
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
-
-	"gopkg.in/yaml.v2"
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/plugins/inputs"
@@ -32,21 +32,19 @@ type State struct {
 
 type event struct {
 	Failure int64 `yaml:"failure"`
-	Noop    int64 `yaml:"noop"`
 	Total   int64 `yaml:"total"`
 	Success int64 `yaml:"success"`
 }
 
 type resource struct {
-	Changed          int64 `yaml:"changed"`
-	CorrectiveChange int64 `yaml:"corrective_change"`
-	Failed           int64 `yaml:"failed"`
-	FailedToRestart  int64 `yaml:"failed_to_restart"`
-	OutOfSync        int64 `yaml:"out_of_sync"`
-	Restarted        int64 `yaml:"restarted"`
-	Scheduled        int64 `yaml:"scheduled"`
-	Skipped          int64 `yaml:"skipped"`
-	Total            int64 `yaml:"total"`
+	Failed          int64 `yaml:"failed"`
+	Scheduled       int64 `yaml:"scheduled"`
+	Changed         int64 `yaml:"changed"`
+	Skipped         int64 `yaml:"skipped"`
+	Total           int64 `yaml:"total"`
+	FailedToRestart int64 `yaml:"failed_to_restart"`
+	Restarted       int64 `yaml:"restarted"`
+	OutOfSync       int64 `yaml:"out_of_sync"`
 }
 
 type change struct {
@@ -54,27 +52,19 @@ type change struct {
 }
 
 type time struct {
-	Anchor                float64 `yaml:"anchor"`
-	CataLogApplication    float64 `yaml:"catalog_application"`
-	ConfigRetrieval       float64 `yaml:"config_retrieval"`
-	ConvertCatalog        float64 `yaml:"convert_catalog"`
-	Cron                  float64 `yaml:"cron"`
-	Exec                  float64 `yaml:"exec"`
-	FactGeneration        float64 `yaml:"fact_generation"`
-	File                  float64 `yaml:"file"`
-	FileBucket            float64 `yaml:"filebucket"`
-	Group                 float64 `yaml:"group"`
-	LastRun               int64   `yaml:"last_run"`
-	NodeRetrieval         float64 `yaml:"node_retrieval"`
-	Notify                float64 `yaml:"notify"`
-	Package               float64 `yaml:"package"`
-	PluginSync            float64 `yaml:"plugin_sync"`
-	Schedule              float64 `yaml:"schedule"`
-	Service               float64 `yaml:"service"`
-	SSHAuthorizedKey      float64 `yaml:"ssh_authorized_key"`
-	Total                 float64 `yaml:"total"`
-	TransactionEvaluation float64 `yaml:"transaction_evaluation"`
-	User                  float64 `yaml:"user"`
+	User             float64 `yaml:"user"`
+	Schedule         float64 `yaml:"schedule"`
+	FileBucket       float64 `yaml:"filebucket"`
+	File             float64 `yaml:"file"`
+	Exec             float64 `yaml:"exec"`
+	Anchor           float64 `yaml:"anchor"`
+	SSHAuthorizedKey float64 `yaml:"ssh_authorized_key"`
+	Service          float64 `yaml:"service"`
+	Package          float64 `yaml:"package"`
+	Total            float64 `yaml:"total"`
+	ConfigRetrieval  float64 `yaml:"config_retrieval"`
+	LastRun          int64   `yaml:"last_run"`
+	Cron             float64 `yaml:"cron"`
 }
 
 type version struct {
@@ -94,6 +84,7 @@ func (pa *PuppetAgent) Description() string {
 
 // Gather reads stats from all configured servers accumulates stats
 func (pa *PuppetAgent) Gather(acc telegraf.Accumulator) error {
+
 	if len(pa.Location) == 0 {
 		pa.Location = "/var/lib/puppet/state/last_run_summary.yaml"
 	}
@@ -102,7 +93,7 @@ func (pa *PuppetAgent) Gather(acc telegraf.Accumulator) error {
 		return fmt.Errorf("%s", err)
 	}
 
-	fh, err := os.ReadFile(pa.Location)
+	fh, err := ioutil.ReadFile(pa.Location)
 	if err != nil {
 		return fmt.Errorf("%s", err)
 	}

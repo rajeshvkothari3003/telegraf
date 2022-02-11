@@ -2,7 +2,6 @@ package nsq_consumer
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/influxdata/telegraf"
@@ -22,7 +21,7 @@ type logger struct {
 	log telegraf.Logger
 }
 
-func (l *logger) Output(_ int, s string) error {
+func (l *logger) Output(calldepth int, s string) error {
 	l.log.Debug(s)
 	return nil
 }
@@ -103,9 +102,7 @@ func (n *NSQConsumer) Start(ac telegraf.Accumulator) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	n.cancel = cancel
 
-	if err := n.connect(); err != nil {
-		return err
-	}
+	n.connect()
 	n.consumer.SetLogger(&logger{log: n.Log}, nsq.LogLevelInfo)
 	n.consumer.AddHandler(nsq.HandlerFunc(func(message *nsq.Message) error {
 		metrics, err := n.parser.Parse(message.Body)
@@ -135,29 +132,10 @@ func (n *NSQConsumer) Start(ac telegraf.Accumulator) error {
 		return nil
 	}))
 
-	// For backward compatibility
-	if n.Server != "" {
-		n.Nsqd = append(n.Nsqd, n.Server)
-	}
-
-	// Check if we have anything to connect to
-	if len(n.Nsqlookupd) == 0 && len(n.Nsqd) == 0 {
-		return fmt.Errorf("either 'nsqd' or 'nsqlookupd' needs to be specified")
-	}
-
 	if len(n.Nsqlookupd) > 0 {
-		err := n.consumer.ConnectToNSQLookupds(n.Nsqlookupd)
-		if err != nil && err != nsq.ErrAlreadyConnected {
-			return err
-		}
+		n.consumer.ConnectToNSQLookupds(n.Nsqlookupd)
 	}
-
-	if len(n.Nsqd) > 0 {
-		err := n.consumer.ConnectToNSQDs(n.Nsqd)
-		if err != nil && err != nsq.ErrAlreadyConnected {
-			return err
-		}
-	}
+	n.consumer.ConnectToNSQDs(append(n.Nsqd, n.Server))
 
 	n.wg.Add(1)
 	go func() {
@@ -201,7 +179,7 @@ func (n *NSQConsumer) Stop() {
 }
 
 // Gather is a noop
-func (n *NSQConsumer) Gather(_ telegraf.Accumulator) error {
+func (n *NSQConsumer) Gather(acc telegraf.Accumulator) error {
 	return nil
 }
 

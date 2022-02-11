@@ -5,19 +5,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf"
 	tgConfig "github.com/influxdata/telegraf/config"
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"github.com/influxdata/telegraf/plugins/processors"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadConfig(t *testing.T) {
-	err := os.Setenv("SECRET_TOKEN", "xxxxxxxxxx")
-	require.NoError(t, err)
-	err = os.Setenv("SECRET_VALUE", `test"\test`)
-	require.NoError(t, err)
+	os.Setenv("SECRET_TOKEN", "xxxxxxxxxx")
+	os.Setenv("SECRET_VALUE", `test"\test`)
 
 	inputs.Add("test", func() telegraf.Input {
 		return &serviceInput{}
@@ -57,7 +54,6 @@ func TestLoadingSpecialTypes(t *testing.T) {
 
 	require.EqualValues(t, 3*time.Second, inp.Duration)
 	require.EqualValues(t, 3*1000*1000, inp.Size)
-	require.EqualValues(t, 52, inp.Hex)
 }
 
 func TestLoadingProcessorWithConfig(t *testing.T) {
@@ -76,7 +72,6 @@ func TestLoadingProcessorWithConfig(t *testing.T) {
 type testDurationInput struct {
 	Duration tgConfig.Duration `toml:"duration"`
 	Size     tgConfig.Size     `toml:"size"`
-	Hex      int64             `toml:"hex"`
 }
 
 func (i *testDurationInput) SampleConfig() string {
@@ -86,7 +81,7 @@ func (i *testDurationInput) SampleConfig() string {
 func (i *testDurationInput) Description() string {
 	return ""
 }
-func (i *testDurationInput) Gather(_ telegraf.Accumulator) error {
+func (i *testDurationInput) Gather(acc telegraf.Accumulator) error {
 	return nil
 }
 

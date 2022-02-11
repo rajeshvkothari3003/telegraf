@@ -8,9 +8,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const tengineSampleResponse = `127.0.0.1,784,1511,2,2,1,0,1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0`
@@ -22,14 +22,15 @@ func TestTengineTags(t *testing.T) {
 	for _, url1 := range urls {
 		addr, _ = url.Parse(url1)
 		tagMap := getTags(addr, "127.0.0.1")
-		require.Contains(t, tagMap["server"], "localhost")
+		assert.Contains(t, tagMap["server"], "localhost")
 	}
 }
 
 func TestTengineGeneratesMetrics(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := fmt.Fprintln(w, tengineSampleResponse)
-		require.NoError(t, err)
+		var rsp string
+		rsp = tengineSampleResponse
+		fmt.Fprintln(w, rsp)
 	}))
 	defer ts.Close()
 

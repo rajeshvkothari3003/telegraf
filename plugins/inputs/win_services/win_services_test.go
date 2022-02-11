@@ -1,4 +1,3 @@
-//go:build windows
 // +build windows
 
 package win_services
@@ -10,11 +9,11 @@ import (
 	"log"
 	"testing"
 
+	"github.com/influxdata/telegraf/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
-
-	"github.com/influxdata/telegraf/testutil"
 )
 
 //testData is DD wrapper for unit testing of WinServices
@@ -136,8 +135,8 @@ func TestBasicInfo(t *testing.T) {
 		mgrProvider: &FakeMgProvider{testErrors[0]},
 	}
 	winServices.Init()
-	require.NotEmpty(t, winServices.SampleConfig())
-	require.NotEmpty(t, winServices.Description())
+	assert.NotEmpty(t, winServices.SampleConfig())
+	assert.NotEmpty(t, winServices.Description())
 }
 
 func TestMgrErrors(t *testing.T) {
@@ -149,7 +148,7 @@ func TestMgrErrors(t *testing.T) {
 	var acc1 testutil.Accumulator
 	err := winServices.Gather(&acc1)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), testErrors[0].mgrConnectError.Error())
+	assert.Contains(t, err.Error(), testErrors[0].mgrConnectError.Error())
 
 	////mgr.listServices error
 	winServices = &WinServices{
@@ -159,7 +158,7 @@ func TestMgrErrors(t *testing.T) {
 	var acc2 testutil.Accumulator
 	err = winServices.Gather(&acc2)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), testErrors[1].mgrListServicesError.Error())
+	assert.Contains(t, err.Error(), testErrors[1].mgrListServicesError.Error())
 
 	////mgr.listServices error 2
 	winServices = &WinServices{
@@ -213,7 +212,7 @@ func TestGatherContainsTag(t *testing.T) {
 	winServices.Init()
 	var acc1 testutil.Accumulator
 	require.NoError(t, winServices.Gather(&acc1))
-	require.Len(t, acc1.Errors, 0, "There should be no errors after gather")
+	assert.Len(t, acc1.Errors, 0, "There should be no errors after gather")
 
 	for _, s := range testSimpleData[0].services {
 		fields := make(map[string]interface{})
@@ -223,26 +222,5 @@ func TestGatherContainsTag(t *testing.T) {
 		tags["service_name"] = s.serviceName
 		tags["display_name"] = s.displayName
 		acc1.AssertContainsTaggedFields(t, "win_services", fields, tags)
-	}
-}
-
-func TestExcludingNamesTag(t *testing.T) {
-	winServices := &WinServices{
-		Log:                  testutil.Logger{},
-		ServiceNamesExcluded: []string{"Service*"},
-		mgrProvider:          &FakeMgProvider{testSimpleData[0]},
-	}
-	winServices.Init()
-	var acc1 testutil.Accumulator
-	require.NoError(t, winServices.Gather(&acc1))
-
-	for _, s := range testSimpleData[0].services {
-		fields := make(map[string]interface{})
-		tags := make(map[string]string)
-		fields["state"] = int(s.state)
-		fields["startup_mode"] = int(s.startUpMode)
-		tags["service_name"] = s.serviceName
-		tags["display_name"] = s.displayName
-		acc1.AssertDoesNotContainsTaggedFields(t, "win_services", fields, tags)
 	}
 }

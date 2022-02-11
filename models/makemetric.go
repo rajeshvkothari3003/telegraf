@@ -4,7 +4,7 @@ import (
 	"github.com/influxdata/telegraf"
 )
 
-// makemetric applies new metric plugin and agent measurement and tag
+// Makemetric applies new metric plugin and agent measurement and tag
 // settings.
 func makemetric(
 	metric telegraf.Metric,

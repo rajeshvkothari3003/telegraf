@@ -6,13 +6,12 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"time"
 
 	"github.com/influxdata/telegraf"
-	"github.com/influxdata/telegraf/config"
 	"github.com/influxdata/telegraf/internal"
 	tlsint "github.com/influxdata/telegraf/plugins/common/tls"
 	"github.com/influxdata/telegraf/plugins/inputs"
@@ -40,9 +39,9 @@ type InfluxDBV2Listener struct {
 	port           int
 	tlsint.ServerConfig
 
-	MaxBodySize config.Size `toml:"max_body_size"`
-	Token       string      `toml:"token"`
-	BucketTag   string      `toml:"bucket_tag"`
+	MaxBodySize internal.Size `toml:"max_body_size"`
+	Token       string        `toml:"token"`
+	BucketTag   string        `toml:"bucket_tag"`
 
 	timeFunc influx.TimeFunc
 
@@ -135,8 +134,8 @@ func (h *InfluxDBV2Listener) Init() error {
 	h.authFailures = selfstat.Register("influxdb_v2_listener", "auth_failures", tags)
 	h.routes()
 
-	if h.MaxBodySize == 0 {
-		h.MaxBodySize = config.Size(defaultMaxBodySize)
+	if h.MaxBodySize.Size == 0 {
+		h.MaxBodySize.Size = defaultMaxBodySize
 	}
 
 	return nil
@@ -211,9 +210,7 @@ func (h *InfluxDBV2Listener) handleReady() http.HandlerFunc {
 			"started": h.startTime.Format(time.RFC3339Nano),
 			"status":  "ready",
 			"up":      h.timeFunc().Sub(h.startTime).String()})
-		if _, err := res.Write(b); err != nil {
-			h.Log.Debugf("error writing in handle-ready: %v", err)
-		}
+		res.Write(b)
 	}
 }
 
@@ -228,26 +225,22 @@ func (h *InfluxDBV2Listener) handleWrite() http.HandlerFunc {
 	return func(res http.ResponseWriter, req *http.Request) {
 		defer h.writesServed.Incr(1)
 		// Check that the content length is not too large for us to handle.
-		if req.ContentLength > int64(h.MaxBodySize) {
-			if err := tooLarge(res, int64(h.MaxBodySize)); err != nil {
-				h.Log.Debugf("error in too-large: %v", err)
-			}
+		if req.ContentLength > h.MaxBodySize.Size {
+			tooLarge(res, h.MaxBodySize.Size)
 			return
 		}
 
 		bucket := req.URL.Query().Get("bucket")
 
 		body := req.Body
-		body = http.MaxBytesReader(res, body, int64(h.MaxBodySize))
+		body = http.MaxBytesReader(res, body, h.MaxBodySize.Size)
 		// Handle gzip request bodies
 		if req.Header.Get("Content-Encoding") == "gzip" {
 			var err error
 			body, err = gzip.NewReader(body)
 			if err != nil {
 				h.Log.Debugf("Error decompressing request body: %v", err.Error())
-				if err := badRequest(res, Invalid, err.Error()); err != nil {
-					h.Log.Debugf("error in bad-request: %v", err)
-				}
+				badRequest(res, Invalid, err.Error())
 				return
 			}
 			defer body.Close()
@@ -256,12 +249,10 @@ func (h *InfluxDBV2Listener) handleWrite() http.HandlerFunc {
 		var readErr error
 		var bytes []byte
 		//body = http.MaxBytesReader(res, req.Body, 1000000) //p.MaxBodySize.Size)
-		bytes, readErr = io.ReadAll(body)
+		bytes, readErr = ioutil.ReadAll(body)
 		if readErr != nil {
 			h.Log.Debugf("Error parsing the request body: %v", readErr.Error())
-			if err := badRequest(res, InternalError, readErr.Error()); err != nil {
-				h.Log.Debugf("error in bad-request: %v", err)
-			}
+			badRequest(res, InternalError, readErr.Error())
 			return
 		}
 		metricHandler := influx.NewMetricHandler()
@@ -281,9 +272,7 @@ func (h *InfluxDBV2Listener) handleWrite() http.HandlerFunc {
 
 		if err != influx.EOF && err != nil {
 			h.Log.Debugf("Error parsing the request body: %v", err.Error())
-			if err := badRequest(res, Invalid, err.Error()); err != nil {
-				h.Log.Debugf("error in bad-request: %v", err)
-			}
+			badRequest(res, Invalid, err.Error())
 			return
 		}
 
@@ -301,7 +290,7 @@ func (h *InfluxDBV2Listener) handleWrite() http.HandlerFunc {
 	}
 }
 
-func tooLarge(res http.ResponseWriter, maxLength int64) error {
+func tooLarge(res http.ResponseWriter, maxLength int64) {
 	res.Header().Set("Content-Type", "application/json")
 	res.Header().Set("X-Influxdb-Error", "http: request body too large")
 	res.WriteHeader(http.StatusRequestEntityTooLarge)
@@ -309,11 +298,10 @@ func tooLarge(res http.ResponseWriter, maxLength int64) error {
 		"code":      fmt.Sprint(Invalid),
 		"message":   "http: request body too large",
 		"maxLength": fmt.Sprint(maxLength)})
-	_, err := res.Write(b)
-	return err
+	res.Write(b)
 }
 
-func badRequest(res http.ResponseWriter, code BadRequestCode, errString string) error {
+func badRequest(res http.ResponseWriter, code BadRequestCode, errString string) {
 	res.Header().Set("Content-Type", "application/json")
 	if errString == "" {
 		errString = "http: bad request"
@@ -326,8 +314,7 @@ func badRequest(res http.ResponseWriter, code BadRequestCode, errString string) 
 		"op":      "",
 		"err":     errString,
 	})
-	_, err := res.Write(b)
-	return err
+	res.Write(b)
 }
 
 func getPrecisionMultiplier(precision string) time.Duration {

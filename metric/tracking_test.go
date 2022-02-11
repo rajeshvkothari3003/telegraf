@@ -16,7 +16,10 @@ func mustMetric(
 	tm time.Time,
 	tp ...telegraf.ValueType,
 ) telegraf.Metric {
-	m := New(name, tags, fields, tm, tp...)
+	m, err := New(name, tags, fields, tm, tp...)
+	if err != nil {
+		panic("mustMetric")
+	}
 	return m
 }
 
@@ -75,13 +78,12 @@ func TestTracking(t *testing.T) {
 		{
 			name: "accept",
 			metric: mustMetric(
-				"memory",
+				"cpu",
 				map[string]string{},
 				map[string]interface{}{
 					"value": 42,
 				},
 				time.Unix(0, 0),
-				telegraf.Gauge,
 			),
 			actions: func(m telegraf.Metric) {
 				m.Accept()
@@ -91,13 +93,12 @@ func TestTracking(t *testing.T) {
 		{
 			name: "reject",
 			metric: mustMetric(
-				"memory",
+				"cpu",
 				map[string]string{},
 				map[string]interface{}{
 					"value": 42,
 				},
 				time.Unix(0, 0),
-				telegraf.Gauge,
 			),
 			actions: func(m telegraf.Metric) {
 				m.Reject()
@@ -107,13 +108,12 @@ func TestTracking(t *testing.T) {
 		{
 			name: "accept copy",
 			metric: mustMetric(
-				"memory",
+				"cpu",
 				map[string]string{},
 				map[string]interface{}{
 					"value": 42,
 				},
 				time.Unix(0, 0),
-				telegraf.Gauge,
 			),
 			actions: func(m telegraf.Metric) {
 				m2 := m.Copy()
@@ -125,13 +125,12 @@ func TestTracking(t *testing.T) {
 		{
 			name: "copy with accept and done",
 			metric: mustMetric(
-				"memory",
+				"cpu",
 				map[string]string{},
 				map[string]interface{}{
 					"value": 42,
 				},
 				time.Unix(0, 0),
-				telegraf.Gauge,
 			),
 			actions: func(m telegraf.Metric) {
 				m2 := m.Copy()
@@ -143,13 +142,12 @@ func TestTracking(t *testing.T) {
 		{
 			name: "copy with mixed delivery",
 			metric: mustMetric(
-				"memory",
+				"cpu",
 				map[string]string{},
 				map[string]interface{}{
 					"value": 42,
 				},
 				time.Unix(0, 0),
-				telegraf.Gauge,
 			),
 			actions: func(m telegraf.Metric) {
 				m2 := m.Copy()

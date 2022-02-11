@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/amir/raidman"
-
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/plugins/outputs"
 )
@@ -49,9 +48,9 @@ func (r *Riemann) Close() error {
 	if r.client == nil {
 		return nil
 	}
-	err := r.client.Close()
+	r.client.Close()
 	r.client = nil
-	return err
+	return nil
 }
 
 func (r *Riemann) SampleConfig() string {
@@ -78,12 +77,14 @@ func (r *Riemann) Write(metrics []telegraf.Metric) error {
 	var events []*raidman.Event
 	for _, p := range metrics {
 		evs := buildEvents(p, r.Separator)
-		events = append(events, evs...)
+		for _, ev := range evs {
+			events = append(events, ev)
+		}
 	}
 
 	var senderr = r.client.SendMulti(events)
 	if senderr != nil {
-		r.Close() //nolint:revive // There is another error which will be returned here
+		r.Close() // always returns nil
 		return fmt.Errorf("failed to send riemann message (will try to reconnect), error: %s", senderr)
 	}
 
@@ -108,9 +109,9 @@ func buildEvents(p telegraf.Metric, s string) []*raidman.Event {
 			Service: serviceName(s, p.Name(), p.Tags(), fieldName),
 		}
 
-		switch value := value.(type) {
+		switch value.(type) {
 		case string:
-			event.State = value
+			event.State = value.(string)
 		default:
 			event.Metric = value
 		}
